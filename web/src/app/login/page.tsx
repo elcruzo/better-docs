@@ -49,7 +49,7 @@ function LoginContent() {
           className="text-xs text-center"
           style={{ fontFamily: "var(--font-mono)", color: "var(--color-subtle)", letterSpacing: "0.5px" }}
         >
-          We only read your repositories. Nothing is modified.
+          Read only access. We never modify your code.
         </p>
       </div>
     </div>
