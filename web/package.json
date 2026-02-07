@@ -1,0 +1,32 @@
+{
+  "name": "web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@hugeicons/react": "^1.1.4",
+    "@tabler/icons-react": "^3.36.1",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "next": "14.2.18",
+    "next-auth": "4.24.11",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-syntax-highlighter": "^16.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.0",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "autoprefixer": "10.4.20",
+    "eslint": "8.57.1",
+    "eslint-config-next": "14.2.18",
+    "postcss": "8.4.49",
+    "tailwindcss": "3.4.16",
+    "typescript": "5.6.3"
+  }
+}

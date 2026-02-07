@@ -1,0 +1,56 @@
+@font-face {
+  font-family: 'Geist Mono Variable';
+  src: url('/fonts/GeistMono-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LT Superior Serif';
+  src: url('/fonts/LTSuperiorSerif-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LT Superior Serif';
+  src: url('/fonts/LTSuperiorSerif-Medium.otf') format('opentype');
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LT Superior Serif';
+  src: url('/fonts/LTSuperiorSerif-Semibold.otf') format('opentype');
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LT Superior Serif';
+  src: url('/fonts/LTSuperiorSerif-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Raveo Display';
+  src: url('/fonts/Raveo-Display-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-display: swap;
+}
+
+:root {
+  --bg-primary: #ebe8db;
+  --bg-secondary: #f5f0ea;
+  --bg-card: #ffffff;
+  --color-dark: #2a2119;
+  --color-muted: color-mix(in srgb, #2a2119 64%, transparent);
+  --color-subtle: color-mix(in srgb, #2a2119 32%, transparent);
+  --color-border: color-mix(in srgb, #2a2119 12%, transparent);
+  --color-border-strong: color-mix(in srgb, #2a2119 24%, transparent);
+  --font-sans: 'Instrument Sans', system-ui, sans-serif;
+  --font-serif: 'LT Superior Serif', Georgia, serif;
+  --font-mono: 'Geist Mono Variable', monospace;
+  --font-display: 'Raveo Display', sans-serif;
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-full: 100vw;
+  --transition: 0.2s ease;
+}

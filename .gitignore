@@ -1,0 +1,9 @@
+target/
+node_modules/
+.next/
+.env
+.env.local
+__pycache__/
+*.pyc
+.venv/
+neo4j_data/

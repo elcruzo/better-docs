@@ -1,0 +1,37 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400..700&display=swap');
+@import '../styles/design-tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; overflow-x: hidden; background-color: var(--bg-primary); }
+
+body {
+  font-family: var(--font-serif), serif;
+  -webkit-font-smoothing: antialiased;
+  color: var(--color-dark);
+  background-color: var(--bg-primary);
+  line-height: 1.6;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  line-height: 1.15;
+  color: var(--color-dark);
+  letter-spacing: -0.03em;
+}
+
+h2 { font-family: var(--font-serif); font-weight: 400; }
+
+p { color: var(--color-muted); }
+
+code { font-family: var(--font-mono); }
+
+::selection { background-color: var(--color-dark); color: var(--bg-primary); }
+
+::-webkit-scrollbar { width: 6px; background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-subtle); border-radius: 3px; }
