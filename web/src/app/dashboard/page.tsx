@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { IconLoader2, IconSparkles } from "@tabler/icons-react";
 import type { Repo, GeneratedDocs } from "@/types";
 import RepoList from "@/components/RepoList";
@@ -23,6 +23,9 @@ export default function DashboardPage() {
   const [docs, setDocs] = useState<GeneratedDocs | null>(null);
   const [generating, setGenerating] = useState(false);
   const [refining, setRefining] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState("");
 
   useEffect(() => {
     fetch("/api/repos")
@@ -31,10 +34,14 @@ export default function DashboardPage() {
       .catch(() => setReposLoading(false));
   }, []);
 
-  const handleGenerate = async () => {
+  const handleGenerate = useCallback(async () => {
     if (!selectedRepo) return;
     setGenerating(true);
     setDocs(null);
+    setError(null);
+    setProgress(0);
+    setProgressMessage("Starting...");
+
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -42,16 +49,85 @@ export default function DashboardPage() {
         body: JSON.stringify({
           repo_url: selectedRepo.clone_url,
           doc_type: docType === "auto" ? null : docType,
+          stream: true,
         }),
       });
-      const data = await res.json();
-      if (data.docs) setDocs(data.docs);
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || `Server error ${res.status}`);
+        setGenerating(false);
+        return;
+      }
+
+      const contentType = res.headers.get("content-type") || "";
+
+      if (contentType.includes("text/event-stream") && res.body) {
+        // Parse SSE stream
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || ""; // keep incomplete line in buffer
+
+          let currentEvent = "";
+          let currentData = "";
+
+          for (const line of lines) {
+            if (line.startsWith("event: ")) {
+              currentEvent = line.slice(7).trim();
+            } else if (line.startsWith("data: ")) {
+              currentData = line.slice(6).trim();
+            } else if (line === "" && currentEvent && currentData) {
+              // End of event block
+              try {
+                const parsed = JSON.parse(currentData);
+
+                if (currentEvent === "progress") {
+                  setProgress(parsed.progress || 0);
+                  setProgressMessage(parsed.message || "");
+                } else if (currentEvent === "done") {
+                  if (parsed.docs) {
+                    setDocs(parsed.docs);
+                    setProgress(100);
+                    setProgressMessage("Done!");
+                  } else {
+                    setError("No docs returned");
+                  }
+                } else if (currentEvent === "error") {
+                  setError(parsed.error || "Generation failed");
+                }
+              } catch {
+                // skip malformed JSON
+              }
+              currentEvent = "";
+              currentData = "";
+            }
+          }
+        }
+      } else {
+        // Fallback: JSON response
+        const data = await res.json();
+        if (data.error) {
+          setError(data.error);
+        } else if (data.docs) {
+          setDocs(data.docs);
+        } else {
+          setError("No docs returned");
+        }
+      }
     } catch (e) {
-      console.error(e);
+      setError(e instanceof Error ? e.message : "Generation failed");
     } finally {
       setGenerating(false);
     }
-  };
+  }, [selectedRepo, docType]);
 
   const handleRefine = async (prompt: string) => {
     if (!docs || !selectedRepo) return;
@@ -136,7 +212,7 @@ export default function DashboardPage() {
 
       {/* Main area */}
       <div className="flex-1 flex flex-col p-4 gap-4 overflow-hidden">
-        <DocsPreview docs={docs} />
+        <DocsPreview docs={docs} loading={generating} error={error} progress={progress} progressMessage={progressMessage} />
         <PromptBar onSubmit={handleRefine} loading={refining || generating} />
       </div>
     </div>
