@@ -44,20 +44,28 @@ impl GraphClient {
                 .param("exports", export_list)
         ).await?;
 
-        // Create IMPORTS_FROM edges based on structured imports
-        for imp in &result.imports {
-            if let Some(ref source) = imp.source {
+        // Batch IMPORTS_FROM edges via UNWIND
+        let import_batch: Vec<HashMap<String, BoltType>> = result.imports.iter()
+            .filter_map(|imp| {
+                let source = imp.source.as_ref()?;
                 let source_clean = source.replace('.', "/");
-                self.graph.run(
-                    query("MATCH (f:File {id: $fid}) \
-                           MERGE (m:Module {name: $mod, repo: $repo}) \
-                           MERGE (f)-[:IMPORTS_FROM {names: $names}]->(m)")
-                        .param("fid", file_id.clone())
-                        .param("mod", source_clean)
-                        .param("repo", repo_name)
-                        .param("names", imp.names.clone())
-                ).await?;
-            }
+                let mut m: HashMap<String, BoltType> = HashMap::new();
+                m.insert("mod_name".into(), source_clean.into());
+                m.insert("names".into(), imp.names.clone().into());
+                Some(m)
+            })
+            .collect();
+
+        if !import_batch.is_empty() {
+            self.graph.run(
+                query("UNWIND $batch AS imp \
+                       MATCH (f:File {id: $fid}) \
+                       MERGE (m:Module {name: imp.mod_name, repo: $repo}) \
+                       MERGE (f)-[:IMPORTS_FROM {names: imp.names}]->(m)")
+                    .param("batch", import_batch)
+                    .param("fid", file_id.clone())
+                    .param("repo", repo_name)
+            ).await?;
         }
 
         if result.symbols.is_empty() {
@@ -118,37 +126,53 @@ impl GraphClient {
             ).await?;
         }
 
-        // Create CALLS edges
-        for sym in &result.symbols {
-            if sym.calls.is_empty() { continue; }
-            let caller_id = format!("{}::{}:{}", file_id, sym.name, sym.range.0);
-            for callee_name in &sym.calls {
-                // Try to link to a known symbol in the same repo
-                self.graph.run(
-                    query("MATCH (caller {id: $cid}) \
-                           MATCH (callee {name: $name})<-[:CONTAINS]-(f:File {repo: $repo}) \
-                           MERGE (caller)-[:CALLS]->(callee)")
-                        .param("cid", caller_id.clone())
-                        .param("name", callee_name.clone())
-                        .param("repo", repo_name)
-                ).await?;
-            }
+        // Batch CALLS edges via UNWIND
+        let calls_batch: Vec<HashMap<String, BoltType>> = result.symbols.iter()
+            .flat_map(|sym| {
+                let caller_id = format!("{}::{}:{}", file_id, sym.name, sym.range.0);
+                sym.calls.iter().map(move |callee_name| {
+                    let mut m: HashMap<String, BoltType> = HashMap::new();
+                    m.insert("cid".into(), caller_id.clone().into());
+                    m.insert("name".into(), callee_name.clone().into());
+                    m
+                })
+            })
+            .collect();
+
+        if !calls_batch.is_empty() {
+            self.graph.run(
+                query("UNWIND $batch AS c \
+                       MATCH (caller {id: c.cid}) \
+                       MATCH (callee {name: c.name})<-[:CONTAINS]-(f:File {repo: $repo}) \
+                       MERGE (caller)-[:CALLS]->(callee)")
+                    .param("batch", calls_batch)
+                    .param("repo", repo_name)
+            ).await?;
         }
 
-        // Create INHERITS edges for classes with bases
-        for sym in &result.symbols {
-            if sym.kind != "class" || sym.bases.is_empty() { continue; }
-            let child_id = format!("{}::{}:{}", file_id, sym.name, sym.range.0);
-            for base in &sym.bases {
-                self.graph.run(
-                    query("MATCH (child {id: $cid}) \
-                           MATCH (parent:Class {name: $name})<-[:CONTAINS]-(f:File {repo: $repo}) \
-                           MERGE (child)-[:INHERITS]->(parent)")
-                        .param("cid", child_id.clone())
-                        .param("name", base.clone())
-                        .param("repo", repo_name)
-                ).await?;
-            }
+        // Batch INHERITS edges via UNWIND
+        let inherits_batch: Vec<HashMap<String, BoltType>> = result.symbols.iter()
+            .filter(|sym| sym.kind == "class" && !sym.bases.is_empty())
+            .flat_map(|sym| {
+                let child_id = format!("{}::{}:{}", file_id, sym.name, sym.range.0);
+                sym.bases.iter().map(move |base| {
+                    let mut m: HashMap<String, BoltType> = HashMap::new();
+                    m.insert("cid".into(), child_id.clone().into());
+                    m.insert("name".into(), base.clone().into());
+                    m
+                })
+            })
+            .collect();
+
+        if !inherits_batch.is_empty() {
+            self.graph.run(
+                query("UNWIND $batch AS c \
+                       MATCH (child {id: c.cid}) \
+                       MATCH (parent:Class {name: c.name})<-[:CONTAINS]-(f:File {repo: $repo}) \
+                       MERGE (child)-[:INHERITS]->(parent)")
+                    .param("batch", inherits_batch)
+                    .param("repo", repo_name)
+            ).await?;
         }
 
         Ok(())

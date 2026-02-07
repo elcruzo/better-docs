@@ -256,11 +256,15 @@ fn extract_docstring(node: Node, source: &str, lang: Language) -> Option<String>
 
 fn extract_symbols(root: Node, source: &str, lang: Language) -> Vec<Symbol> {
     let mut symbols = Vec::new();
-    collect_symbols(root, source, lang, None, &mut symbols);
+    collect_symbols(root, source, lang, None, &mut symbols, 0);
     symbols
 }
 
-fn collect_symbols(node: Node, source: &str, lang: Language, parent: Option<&str>, out: &mut Vec<Symbol>) {
+// Max recursion depth to prevent stack overflow on deeply nested files
+const MAX_SYMBOL_DEPTH: usize = 64;
+
+fn collect_symbols(node: Node, source: &str, lang: Language, parent: Option<&str>, out: &mut Vec<Symbol>, depth: usize) {
+    if depth > MAX_SYMBOL_DEPTH { return; }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match (lang, child.kind()) {
@@ -286,7 +290,7 @@ fn collect_symbols(node: Node, source: &str, lang: Language, parent: Option<&str
                     out.push(sym);
                 }
                 if !name.is_empty() {
-                    collect_symbols(child, source, lang, Some(&name), out);
+                    collect_symbols(child, source, lang, Some(&name), out, depth + 1);
                 }
             }
 
@@ -306,7 +310,7 @@ fn collect_symbols(node: Node, source: &str, lang: Language, parent: Option<&str
                     out.push(sym);
                 }
                 if !name.is_empty() {
-                    collect_symbols(child, source, lang, Some(&name), out);
+                    collect_symbols(child, source, lang, Some(&name), out, depth + 1);
                 }
             }
             (Language::TypeScript | Language::JavaScript, "method_definition") => {
@@ -356,7 +360,7 @@ fn collect_symbols(node: Node, source: &str, lang: Language, parent: Option<&str
                     .and_then(|n| n.utf8_text(source.as_bytes()).ok())
                     .unwrap_or("").to_string();
                 if !type_name.is_empty() {
-                    collect_symbols(child, source, lang, Some(&type_name), out);
+                    collect_symbols(child, source, lang, Some(&type_name), out, depth + 1);
                 }
             }
 
@@ -388,7 +392,7 @@ fn collect_symbols(node: Node, source: &str, lang: Language, parent: Option<&str
                     out.push(sym);
                 }
                 if !name.is_empty() {
-                    collect_symbols(child, source, lang, Some(&name), out);
+                    collect_symbols(child, source, lang, Some(&name), out, depth + 1);
                 }
             }
             (Language::Java, "method_declaration" | "constructor_declaration") => {
@@ -411,7 +415,7 @@ fn collect_symbols(node: Node, source: &str, lang: Language, parent: Option<&str
                     out.push(sym);
                 }
                 if !name.is_empty() {
-                    collect_symbols(child, source, lang, Some(&name), out);
+                    collect_symbols(child, source, lang, Some(&name), out, depth + 1);
                 }
             }
 
@@ -429,7 +433,7 @@ fn collect_symbols(node: Node, source: &str, lang: Language, parent: Option<&str
                     out.push(sym);
                 }
                 if !name.is_empty() {
-                    collect_symbols(child, source, lang, Some(&name), out);
+                    collect_symbols(child, source, lang, Some(&name), out, depth + 1);
                 }
             }
 
@@ -452,13 +456,13 @@ fn collect_symbols(node: Node, source: &str, lang: Language, parent: Option<&str
                     out.push(sym);
                 }
                 if !name.is_empty() {
-                    collect_symbols(child, source, lang, Some(&name), out);
+                    collect_symbols(child, source, lang, Some(&name), out, depth + 1);
                 }
             }
 
             _ => {
                 // Recurse into other nodes to find nested definitions
-                collect_symbols(child, source, lang, parent, out);
+                collect_symbols(child, source, lang, parent, out, depth + 1);
             }
         }
     }
