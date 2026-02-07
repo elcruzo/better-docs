@@ -1,8 +1,8 @@
 import json, os
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import SystemMessage, HumanMessage
+from app.llm import get_llm
 
-llm = ChatAnthropic(model="claude-sonnet-4-20250514", api_key=os.getenv("ANTHROPIC_API_KEY"), max_tokens=8192)
+llm = get_llm()
 
 REFINE_PROMPT = """You are a documentation editor for "better-docs". You receive existing documentation JSON and a user's refinement request. Update the documentation accordingly.
 
@@ -14,7 +14,11 @@ Rules:
 - Return ONLY valid JSON, no markdown fences."""
 
 async def refine_docs(current_docs: dict, prompt: str, repo_name: str) -> dict:
-    docs_str = json.dumps(current_docs, indent=2)[:6000]
+    docs_str = json.dumps(current_docs, indent=2)
+    # Keep within reasonable token budget
+    if len(docs_str) > 8000:
+        docs_str = json.dumps(current_docs)[:8000]
+
     user_msg = f"""Current docs for "{repo_name}":
 {docs_str}
 
@@ -25,5 +29,13 @@ Return the updated documentation JSON."""
     response = await llm.ainvoke([SystemMessage(content=REFINE_PROMPT), HumanMessage(content=user_msg)])
     text = response.content.strip()
     if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0]
-    return json.loads(text)
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            return json.loads(text[start:end])
+        raise
