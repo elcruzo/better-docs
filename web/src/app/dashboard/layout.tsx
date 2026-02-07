@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import authOptions from "@/lib/auth";
 import Navbar from "@/components/Navbar";
 import Providers from "@/components/Providers";
+import { ThemeProvider } from "@/components/ThemeProvider";
 
 export const dynamic = "force-dynamic";
 
@@ -12,10 +13,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <Providers>
-      <div className="min-h-screen flex flex-col" style={{ backgroundColor: "var(--bg-primary)" }}>
-        <Navbar />
-        {children}
-      </div>
+      <ThemeProvider>
+        <div className="min-h-screen flex flex-col" style={{ backgroundColor: "var(--bg-primary)", color: "var(--color-dark)", transition: "background-color 0.2s ease, color 0.2s ease" }}>
+          <Navbar />
+          {children}
+        </div>
+      </ThemeProvider>
     </Providers>
   );
 }

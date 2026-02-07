@@ -36,8 +36,8 @@
 }
 
 :root {
-  --bg-primary: #ebe8db;
-  --bg-secondary: #f5f0ea;
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f5;
   --bg-card: #ffffff;
   --color-dark: #2a2119;
   --color-muted: color-mix(in srgb, #2a2119 64%, transparent);
@@ -53,4 +53,15 @@
   --radius-lg: 24px;
   --radius-full: 100vw;
   --transition: 0.2s ease;
+}
+
+[data-theme="dark"] {
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #141414;
+  --bg-card: #1a1a1a;
+  --color-dark: #e8e5e0;
+  --color-muted: rgba(232, 229, 224, 0.64);
+  --color-subtle: rgba(232, 229, 224, 0.32);
+  --color-border: rgba(232, 229, 224, 0.1);
+  --color-border-strong: rgba(232, 229, 224, 0.2);
 }
