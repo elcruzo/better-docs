@@ -14,7 +14,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <Providers>
       <ThemeProvider>
-        <div className="min-h-screen flex flex-col" style={{ backgroundColor: "var(--bg-primary)", color: "var(--color-dark)", transition: "background-color 0.2s ease, color 0.2s ease" }}>
+        <div className="h-screen flex flex-col overflow-hidden" style={{ backgroundColor: "var(--bg-primary)", color: "var(--color-dark)", transition: "background-color 0.2s ease, color 0.2s ease" }}>
           <Navbar />
           {children}
         </div>

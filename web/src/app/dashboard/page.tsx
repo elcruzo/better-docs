@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { IconLoader2, IconSparkles } from "@tabler/icons-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { IconLoader2, IconSparkles, IconHistory, IconFileText, IconX } from "@tabler/icons-react";
 import type { Repo, GeneratedDocs } from "@/types";
 import RepoList from "@/components/RepoList";
 import DocsPreview from "@/components/DocsPreview";
@@ -26,13 +26,35 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
+  const [history, setHistory] = useState<{ id: string; slug: string; repoName: string; docType: string; updatedAt: string }[]>([]);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const handleCancel = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setGenerating(false);
+    setProgress(0);
+    setProgressMessage("");
+  }, []);
+
+  const refreshHistory = useCallback(() => {
+    fetch("/api/projects")
+      .then((r) => r.json())
+      .then((data) => { if (Array.isArray(data)) setHistory(data); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetch("/api/repos")
       .then((r) => r.json())
       .then((data) => { setRepos(Array.isArray(data) ? data : []); setReposLoading(false); })
       .catch(() => setReposLoading(false));
-  }, []);
+
+    // Load project history
+    refreshHistory();
+  }, [refreshHistory]);
 
   const handleGenerate = useCallback(async () => {
     if (!selectedRepo) return;
@@ -41,6 +63,9 @@ export default function DashboardPage() {
     setError(null);
     setProgress(0);
     setProgressMessage("Starting...");
+
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
       const res = await fetch("/api/generate", {
@@ -51,6 +76,7 @@ export default function DashboardPage() {
           doc_type: docType === "auto" ? null : docType,
           stream: true,
         }),
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -67,6 +93,8 @@ export default function DashboardPage() {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
+        let currentEvent = "";
+        let currentData = "";
 
         while (true) {
           const { done, value } = await reader.read();
@@ -76,35 +104,35 @@ export default function DashboardPage() {
           const lines = buffer.split("\n");
           buffer = lines.pop() || ""; // keep incomplete line in buffer
 
-          let currentEvent = "";
-          let currentData = "";
-
           for (const line of lines) {
             if (line.startsWith("event: ")) {
               currentEvent = line.slice(7).trim();
             } else if (line.startsWith("data: ")) {
               currentData = line.slice(6).trim();
-            } else if (line === "" && currentEvent && currentData) {
-              // End of event block
-              try {
-                const parsed = JSON.parse(currentData);
+            } else if (line === "") {
+              // Empty line = end of event block
+              if (currentEvent && currentData) {
+                try {
+                  const parsed = JSON.parse(currentData);
 
-                if (currentEvent === "progress") {
-                  setProgress(parsed.progress || 0);
-                  setProgressMessage(parsed.message || "");
-                } else if (currentEvent === "done") {
-                  if (parsed.docs) {
-                    setDocs(parsed.docs);
-                    setProgress(100);
-                    setProgressMessage("Done!");
-                  } else {
-                    setError("No docs returned");
+                  if (currentEvent === "progress") {
+                    setProgress(parsed.progress || 0);
+                    setProgressMessage(parsed.message || "");
+                  } else if (currentEvent === "done") {
+                    if (parsed.docs) {
+                      setDocs(parsed.docs);
+                      setProgress(100);
+                      setProgressMessage("Done!");
+                      refreshHistory();
+                    } else {
+                      setError("No docs returned");
+                    }
+                  } else if (currentEvent === "error") {
+                    setError(parsed.error || "Generation failed");
                   }
-                } else if (currentEvent === "error") {
-                  setError(parsed.error || "Generation failed");
+                } catch {
+                  // skip malformed JSON
                 }
-              } catch {
-                // skip malformed JSON
               }
               currentEvent = "";
               currentData = "";
@@ -118,16 +146,22 @@ export default function DashboardPage() {
           setError(data.error);
         } else if (data.docs) {
           setDocs(data.docs);
+          refreshHistory();
         } else {
           setError("No docs returned");
         }
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Generation failed");
+      if (e instanceof DOMException && e.name === "AbortError") {
+        // User cancelled -- not an error
+      } else {
+        setError(e instanceof Error ? e.message : "Generation failed");
+      }
     } finally {
+      abortRef.current = null;
       setGenerating(false);
     }
-  }, [selectedRepo, docType]);
+  }, [selectedRepo, docType, refreshHistory]);
 
   const handleRefine = async (prompt: string) => {
     if (!docs || !selectedRepo) return;
@@ -144,7 +178,10 @@ export default function DashboardPage() {
         }),
       });
       const data = await res.json();
-      if (data.docs) setDocs(data.docs);
+      if (data.docs) {
+        setDocs(data.docs);
+        refreshHistory();
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -159,7 +196,59 @@ export default function DashboardPage() {
         className="w-72 flex-shrink-0 border-r flex flex-col"
         style={{ borderColor: "var(--color-border)", backgroundColor: "var(--bg-primary)" }}
       >
-        <RepoList repos={repos} selectedRepo={selectedRepo} onSelect={setSelectedRepo} loading={reposLoading} />
+        {/* Top half: repos */}
+        <div className="flex-1 flex flex-col overflow-hidden" style={{ minHeight: 0 }}>
+          <RepoList repos={repos} selectedRepo={selectedRepo} onSelect={setSelectedRepo} loading={reposLoading} />
+        </div>
+
+        {/* Bottom half: history */}
+        <div
+          className="flex-1 flex flex-col overflow-hidden border-t"
+          style={{ borderColor: "var(--color-border)", minHeight: 0 }}
+        >
+          {/* Fixed header -- does not scroll */}
+          <p
+            className="text-xs px-5 py-3 flex-shrink-0"
+            style={{ fontFamily: "var(--font-mono)", color: "var(--color-subtle)", letterSpacing: "1px", textTransform: "uppercase" }}
+          >
+            <IconHistory size={11} className="inline mr-1.5" style={{ verticalAlign: "-1px" }} />
+            History
+          </p>
+
+          {/* Scrollable history list */}
+          <div className="flex flex-col gap-1 p-3 overflow-y-auto flex-1" style={{ minHeight: 0 }}>
+            {history.length === 0 ? (
+              <p className="text-xs px-2" style={{ fontFamily: "var(--font-serif)", color: "var(--color-subtle)" }}>
+                Generated docs will appear here
+              </p>
+            ) : (
+              history.map((project) => (
+                <button
+                  key={project.id}
+                  onClick={() => {
+                    // Load docs from history
+                    fetch(`/api/projects/${project.slug}`)
+                      .then((r) => r.json())
+                      .then((data) => { if (data.docs) setDocs(data.docs); })
+                      .catch(() => {});
+                  }}
+                  className="flex flex-col gap-0.5 text-left px-3 py-2 rounded-xl cursor-pointer transition-colors border-none"
+                  style={{ backgroundColor: "transparent" }}
+                >
+                  <div className="flex items-center gap-2">
+                    <IconFileText size={13} style={{ color: "var(--color-muted)" }} />
+                    <span className="text-sm truncate" style={{ fontFamily: "var(--font-sans)", fontWeight: 500, color: "var(--color-dark)" }}>
+                      {project.repoName}
+                    </span>
+                  </div>
+                  <span className="text-xs pl-5" style={{ fontFamily: "var(--font-mono)", color: "var(--color-subtle)" }}>
+                    {project.docType} &middot; {new Date(project.updatedAt).toLocaleDateString()}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
 
         {/* Doc type + generate */}
         {selectedRepo && (
@@ -183,25 +272,23 @@ export default function DashboardPage() {
             </select>
 
             <button
-              onClick={handleGenerate}
-              disabled={generating}
+              onClick={generating ? handleCancel : handleGenerate}
               className="flex items-center justify-center gap-2 w-full cursor-pointer"
               style={{
                 fontFamily: "var(--font-mono)",
                 fontSize: "12px",
                 letterSpacing: "1.5px",
                 textTransform: "uppercase",
-                backgroundColor: "var(--color-dark)",
-                color: "var(--bg-primary)",
+                backgroundColor: generating ? "transparent" : "var(--color-dark)",
+                color: generating ? "var(--color-muted)" : "var(--bg-primary)",
                 borderRadius: "var(--radius-full)",
                 padding: "12px 20px",
-                border: "none",
-                opacity: generating ? 0.7 : 1,
+                border: generating ? "1px solid var(--color-border)" : "none",
                 transition: "var(--transition)",
               }}
             >
               {generating ? (
-                <><IconLoader2 size={14} className="animate-spin" /> Generating...</>
+                <><IconX size={14} /> Cancel</>
               ) : (
                 <><IconSparkles size={14} /> Generate Docs</>
               )}

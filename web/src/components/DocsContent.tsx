@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import type { DocPage, DocSection } from "@/types";
 import CodeBlock from "./CodeBlock";
 import CardGroup from "./CardGroup";
@@ -66,32 +67,33 @@ function renderSection(section: DocSection, i: number) {
     case "heading": {
       const level = section.level || 2;
       const sizes: Record<number, string> = { 1: "text-3xl", 2: "text-2xl", 3: "text-xl", 4: "text-lg" };
-      const cls = `${sizes[level] || "text-xl"} mt-8 mb-3`;
-      if (level === 1) return <h1 key={i} className={cls}>{section.content}</h1>;
-      if (level === 3) return <h3 key={i} className={cls}>{section.content}</h3>;
-      if (level === 4) return <h4 key={i} className={cls}>{section.content}</h4>;
-      return <h2 key={i} className={cls}>{section.content}</h2>;
+      const cls = `${sizes[level] || "text-xl"} pt-4`;
+      const id = `section-${i}`;
+      if (level === 1) return <h1 key={i} id={id} className={cls}>{section.content}</h1>;
+      if (level === 3) return <h3 key={i} id={id} className={cls}>{section.content}</h3>;
+      if (level === 4) return <h4 key={i} id={id} className={cls}>{section.content}</h4>;
+      return <h2 key={i} id={id} className={cls}>{section.content}</h2>;
     }
 
     case "paragraph":
       return (
-        <p key={i} className="text-base leading-relaxed mb-4" style={{ fontFamily: "var(--font-serif)", color: "var(--color-muted)" }}>
+        <p key={i} className="text-base leading-relaxed" style={{ fontFamily: "var(--font-serif)", color: "var(--color-muted)" }}>
           {section.content}
         </p>
       );
 
     case "codeBlock":
-      return <div key={i} className="mb-4"><CodeBlock code={section.content || ""} language={section.language} /></div>;
+      return <div key={i}><CodeBlock code={section.content || ""} language={section.language} /></div>;
 
     case "endpoint":
-      return <div key={i} className="mb-4"><EndpointCard section={section} /></div>;
+      return <div key={i}><EndpointCard section={section} /></div>;
 
     case "cardGroup":
-      return <div key={i} className="mb-4"><CardGroup cards={section.cards || []} /></div>;
+      return <div key={i}><CardGroup cards={section.cards || []} /></div>;
 
     case "table":
       return (
-        <div key={i} className="mb-4 overflow-x-auto rounded-xl" style={{ border: "1px solid var(--color-border)" }}>
+        <div key={i} className="overflow-x-auto rounded-xl" style={{ border: "1px solid var(--color-border)" }}>
           <div
             className="text-sm"
             style={{ fontFamily: "var(--font-mono)", color: "var(--color-dark)" }}
@@ -102,7 +104,7 @@ function renderSection(section: DocSection, i: number) {
 
     case "list":
       return (
-        <ul key={i} className="mb-4 flex flex-col gap-1.5 pl-5" style={{ listStyleType: "disc" }}>
+        <ul key={i} className="flex flex-col gap-1.5 pl-5" style={{ listStyleType: "disc" }}>
           {(section.items || []).map((item, j) => (
             <li key={j} className="text-sm" style={{ fontFamily: "var(--font-serif)", color: "var(--color-muted)" }}>{item}</li>
           ))}
@@ -111,7 +113,7 @@ function renderSection(section: DocSection, i: number) {
 
     default:
       return section.content ? (
-        <p key={i} className="text-sm mb-3" style={{ color: "var(--color-muted)" }}>{section.content}</p>
+        <p key={i} className="text-sm" style={{ color: "var(--color-muted)" }}>{section.content}</p>
       ) : null;
   }
 }
@@ -129,7 +131,99 @@ function markdownTableToHtml(md: string): string {
   return html;
 }
 
+// --- Minimap component ---
+
+interface TocItem {
+  id: string;
+  label: string;
+  level: number;
+}
+
+function Minimap({ items, activeId, scrollContainerRef }: { items: TocItem[]; activeId: string; scrollContainerRef: React.RefObject<HTMLDivElement | null> }) {
+  if (items.length === 0) return null;
+
+  const handleClick = (id: string) => {
+    const el = scrollContainerRef.current?.querySelector(`#${id}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  return (
+    <nav
+      className="w-44 flex-shrink-0 py-6 pr-4 overflow-y-auto"
+      style={{ borderLeft: "1px solid var(--color-border)" }}
+    >
+      <p
+        className="text-xs px-3 mb-3"
+        style={{ fontFamily: "var(--font-mono)", color: "var(--color-subtle)", letterSpacing: "1px", textTransform: "uppercase" }}
+      >
+        On this page
+      </p>
+      <div className="flex flex-col gap-0.5">
+        {items.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => handleClick(item.id)}
+            className="text-left px-3 py-1 cursor-pointer border-none bg-transparent transition-colors"
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: item.level <= 2 ? "12px" : "11px",
+              paddingLeft: item.level >= 3 ? "20px" : "12px",
+              color: activeId === item.id ? "var(--color-dark)" : "var(--color-subtle)",
+              fontWeight: activeId === item.id ? 500 : 400,
+              borderLeft: activeId === item.id ? "2px solid var(--color-dark)" : "2px solid transparent",
+              transition: "all 0.2s ease",
+            }}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
 export default function DocsContent({ page }: { page: DocPage | null }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [activeHeading, setActiveHeading] = useState("");
+
+  // Extract headings for minimap
+  const tocItems: TocItem[] = page
+    ? page.sections
+        .map((s, i) => (s.type === "heading" ? { id: `section-${i}`, label: s.content || "", level: s.level || 2 } : null))
+        .filter((x): x is TocItem => x !== null)
+    : [];
+
+  // Track scroll position to highlight active heading
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container || tocItems.length === 0) return;
+
+    const onScroll = () => {
+      let current = "";
+      for (const item of tocItems) {
+        const el = container.querySelector(`#${item.id}`);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          const containerRect = container.getBoundingClientRect();
+          if (rect.top - containerRect.top < 100) {
+            current = item.id;
+          }
+        }
+      }
+      setActiveHeading(current);
+    };
+
+    container.addEventListener("scroll", onScroll, { passive: true });
+    onScroll(); // initial
+    return () => container.removeEventListener("scroll", onScroll);
+  }, [tocItems]);
+
+  // Reset scroll and active heading when page changes
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    setActiveHeading("");
+  }, [page?.title]);
+
   if (!page) {
     return (
       <div className="flex-1 flex items-center justify-center" style={{ color: "var(--color-subtle)" }}>
@@ -139,19 +233,22 @@ export default function DocsContent({ page }: { page: DocPage | null }) {
   }
 
   return (
-    <article className="flex-1 overflow-y-auto px-10 py-8 max-w-3xl">
-      <h1
-        className="text-3xl mb-2"
-        style={{ fontFamily: "var(--font-sans)", fontWeight: 500, color: "var(--color-dark)", letterSpacing: "-0.03em" }}
-      >
-        {page.title}
-      </h1>
-      {page.description && (
-        <p className="text-base mb-8" style={{ fontFamily: "var(--font-serif)", color: "var(--color-muted)" }}>
-          {page.description}
-        </p>
-      )}
-      <div>{page.sections.map((s, i) => renderSection(s, i))}</div>
-    </article>
+    <div className="flex-1 flex overflow-hidden">
+      <article ref={scrollRef} className="flex-1 overflow-y-auto px-10 py-8 max-w-3xl">
+        <h1
+          className="text-3xl mb-2"
+          style={{ fontFamily: "var(--font-sans)", fontWeight: 500, color: "var(--color-dark)", letterSpacing: "-0.03em" }}
+        >
+          {page.title}
+        </h1>
+        {page.description && (
+          <p className="text-base mb-10" style={{ fontFamily: "var(--font-serif)", color: "var(--color-muted)" }}>
+            {page.description}
+          </p>
+        )}
+        <div className="flex flex-col gap-6">{page.sections.map((s, i) => renderSection(s, i))}</div>
+      </article>
+      <Minimap items={tocItems} activeId={activeHeading} scrollContainerRef={scrollRef} />
+    </div>
   );
 }

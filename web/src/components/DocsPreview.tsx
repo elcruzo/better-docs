@@ -163,14 +163,32 @@ export default function DocsPreview({ docs, loading, error, progress = 0, progre
   }
 
   const currentPageId = activePage || docs.navigation[0]?.pages[0] || "";
-  const currentPage = docs.pages[currentPageId] || null;
+
+  // Fuzzy page lookup: try exact match first, then case-insensitive
+  const findPage = (id: string) => {
+    if (docs.pages[id]) return docs.pages[id];
+    // Try case-insensitive match
+    const lower = id.toLowerCase();
+    const key = Object.keys(docs.pages).find((k) => k.toLowerCase() === lower);
+    return key ? docs.pages[key] : null;
+  };
+
+  const currentPage = findPage(currentPageId);
+
+  // Filter navigation to only include pages that actually exist
+  const filteredNav = docs.navigation
+    .map((group) => ({
+      ...group,
+      pages: group.pages.filter((p) => findPage(p) !== null),
+    }))
+    .filter((group) => group.pages.length > 0);
 
   return (
     <div
       className="flex-1 flex rounded-2xl overflow-hidden"
       style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--color-border)" }}
     >
-      <DocsSidebar navigation={docs.navigation} activePage={currentPageId} onPageSelect={setActivePage} />
+      <DocsSidebar navigation={filteredNav} activePage={currentPageId} onPageSelect={setActivePage} />
       <DocsContent page={currentPage} />
     </div>
   );

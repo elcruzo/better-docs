@@ -37,8 +37,8 @@ export default function DocsSidebar({ navigation, activePage, onPageSelect }: Pr
                 style={{
                   fontFamily: "var(--font-sans)",
                   fontWeight: activePage === page ? 500 : 400,
-                  color: activePage === page ? "var(--color-dark)" : "var(--color-muted)",
-                  backgroundColor: activePage === page ? "var(--color-border)" : "transparent",
+                  color: activePage === page ? "var(--bg-primary)" : "var(--color-muted)",
+                  backgroundColor: activePage === page ? "var(--color-dark)" : "transparent",
                   border: "none",
                 }}
               >
