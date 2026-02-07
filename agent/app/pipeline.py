@@ -156,7 +156,7 @@ async def run_pipeline_streaming(
         return {"error": state["error"]}
 
     stats = state.get("index_stats", {})
-    file_count = stats.get("files_indexed", "?")
+    file_count = stats.get("files_processed", stats.get("files_indexed", "?"))
     on_progress("parse", 25, f"Parsed {file_count} files")
 
     # Step 3: Classify
