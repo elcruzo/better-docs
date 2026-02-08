@@ -60,6 +60,12 @@ export default function DocsPreview({ docs, loading, error, progress = 0, progre
             >
               {progress < 5 ? "Initializing" : getStepLabel(progressMessage)}
             </p>
+            <p
+              className="text-xs"
+              style={{ fontFamily: "var(--font-serif)", color: "var(--color-subtle)" }}
+            >
+              This may take up to 10 minutes for larger repos
+            </p>
           </div>
 
           {/* Progress bar container */}
