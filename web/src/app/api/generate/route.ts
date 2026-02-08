@@ -4,8 +4,7 @@ import authOptions from "@/lib/auth";
 import { generateDocs, generateDocsStream, refineDocs } from "@/lib/agent";
 import { saveDocs } from "@/lib/storage";
 
-// Increase to 600 after upgrading to Vercel Pro
-export const maxDuration = 300;
+export const maxDuration = 600;
 
 export async function POST(req: Request) {
   try {
