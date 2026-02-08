@@ -16,32 +16,43 @@ export async function saveDocs(
 ): Promise<{ slug: string }> {
   // Include userId prefix to prevent cross-user slug collisions
   const slug = `${slugify(repoName)}-${userId.slice(0, 8)}`;
+  const docType = docs.doc_type || "auto";
 
   await prisma.project.upsert({
     where: { slug },
     update: {
       docs: docs as any,
-      docType: docs.doc_type,
+      docType,
       repoUrl: repoUrl || undefined,
+      repoName,
       updatedAt: new Date(),
     },
     create: {
       slug,
-      repoUrl,
+      repoUrl: repoUrl || "",
       repoName,
       userId,
       docs: docs as any,
-      docType: docs.doc_type,
+      docType,
     },
   });
 
   return { slug };
 }
 
-export async function getDocs(slug: string): Promise<{ project: { slug: string; repoName: string; docType: string; docs: GeneratedDocs; updatedAt: Date } } | null> {
+export async function getDocs(slug: string) {
   const project = await prisma.project.findUnique({
     where: { slug },
-    select: { slug: true, repoName: true, docType: true, docs: true, updatedAt: true },
+    select: {
+      id: true,
+      slug: true,
+      repoName: true,
+      repoUrl: true,
+      docType: true,
+      docs: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   });
   if (!project) return null;
   return { project: { ...project, docs: project.docs as unknown as GeneratedDocs } };
