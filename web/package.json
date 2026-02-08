@@ -4,12 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
+    "postinstall": "prisma generate",
     "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
-    "@auth/prisma-adapter": "^2.11.1",
+    "@auth/prisma-adapter": "^1.6.0",
     "@hugeicons/react": "^1.1.4",
     "@prisma/client": "^6.19.2",
     "@tabler/icons-react": "^3.36.1",

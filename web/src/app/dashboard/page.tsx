@@ -27,6 +27,8 @@ export default function DashboardPage() {
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
   const [history, setHistory] = useState<{ id: string; slug: string; repoName: string; docType: string; updatedAt: string }[]>([]);
+  const [currentSlug, setCurrentSlug] = useState<string | null>(null);
+  const [currentRepoName, setCurrentRepoName] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const handleCancel = useCallback(() => {
@@ -127,6 +129,10 @@ export default function DashboardPage() {
                     } else {
                       setError("No docs returned");
                     }
+                  } else if (currentEvent === "saved") {
+                    // Server persisted the docs and returned the slug
+                    if (parsed.slug) setCurrentSlug(parsed.slug);
+                    if (parsed.repoName) setCurrentRepoName(parsed.repoName);
                   } else if (currentEvent === "error") {
                     setError(parsed.error || "Generation failed");
                   }
@@ -146,6 +152,8 @@ export default function DashboardPage() {
           setError(data.error);
         } else if (data.docs) {
           setDocs(data.docs);
+          if (data.slug) setCurrentSlug(data.slug);
+          setCurrentRepoName(selectedRepo.name);
           refreshHistory();
         } else {
           setError("No docs returned");
@@ -164,7 +172,8 @@ export default function DashboardPage() {
   }, [selectedRepo, docType, refreshHistory]);
 
   const handleRefine = async (prompt: string) => {
-    if (!docs || !selectedRepo) return;
+    const repoName = selectedRepo?.name || currentRepoName;
+    if (!docs || !repoName) return;
     setRefining(true);
     try {
       const res = await fetch("/api/generate", {
@@ -174,12 +183,14 @@ export default function DashboardPage() {
           action: "refine",
           current_docs: docs,
           prompt,
-          repo_name: selectedRepo.name,
+          repo_name: repoName,
+          repo_url: selectedRepo?.clone_url || "",
         }),
       });
       const data = await res.json();
       if (data.docs) {
         setDocs(data.docs);
+        if (data.slug) setCurrentSlug(data.slug);
         refreshHistory();
       }
     } catch (e) {
@@ -229,7 +240,13 @@ export default function DashboardPage() {
                     // Load docs from history
                     fetch(`/api/projects/${project.slug}`)
                       .then((r) => r.json())
-                      .then((data) => { if (data.docs) setDocs(data.docs); })
+                      .then((data) => {
+                        if (data.docs) {
+                          setDocs(data.docs);
+                          setCurrentSlug(project.slug);
+                          setCurrentRepoName(project.repoName);
+                        }
+                      })
                       .catch(() => {});
                   }}
                   className="flex flex-col gap-0.5 text-left px-3 py-2 rounded-xl cursor-pointer transition-colors border-none"
@@ -299,8 +316,8 @@ export default function DashboardPage() {
 
       {/* Main area */}
       <div className="flex-1 flex flex-col p-4 gap-4 overflow-hidden">
-        <DocsPreview docs={docs} loading={generating} error={error} progress={progress} progressMessage={progressMessage} />
-        <PromptBar onSubmit={handleRefine} loading={refining || generating} />
+        <DocsPreview docs={docs} loading={generating} error={error} progress={progress} progressMessage={progressMessage} slug={currentSlug} />
+        <PromptBar onSubmit={handleRefine} loading={refining || generating} disabled={!docs} />
       </div>
     </div>
   );

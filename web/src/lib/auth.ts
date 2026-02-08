@@ -28,6 +28,31 @@ export const authOptions: AuthOptions = {
       }
       return session;
     },
+    async signIn({ account }) {
+      // Persist token updates on every sign-in (GitHub rotates tokens)
+      if (account && account.provider === "github") {
+        try {
+          await prisma.account.updateMany({
+            where: {
+              provider: account.provider,
+              providerAccountId: account.providerAccountId,
+            },
+            data: {
+              access_token: account.access_token,
+              refresh_token: account.refresh_token,
+              expires_at: account.expires_at,
+              token_type: account.token_type,
+              scope: account.scope,
+              id_token: account.id_token,
+              session_state: account.session_state as string | null,
+            },
+          });
+        } catch (e) {
+          console.error("Failed to update account tokens:", e);
+        }
+      }
+      return true;
+    },
   },
   pages: { signIn: "/login" },
 };

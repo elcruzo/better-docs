@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { IconExternalLink, IconCopy, IconCheck } from "@tabler/icons-react";
 import type { GeneratedDocs } from "@/types";
 import DocsSidebar from "./DocsSidebar";
 import DocsContent from "./DocsContent";
@@ -11,6 +12,7 @@ interface DocsPreviewProps {
   error?: string | null;
   progress?: number;
   progressMessage?: string;
+  slug?: string | null;
 }
 
 const STEP_LABELS: Record<string, string> = {
@@ -28,8 +30,20 @@ function getStepLabel(message: string): string {
   return "Processing";
 }
 
-export default function DocsPreview({ docs, loading, error, progress = 0, progressMessage = "" }: DocsPreviewProps) {
+export default function DocsPreview({ docs, loading, error, progress = 0, progressMessage = "", slug }: DocsPreviewProps) {
   const [activePage, setActivePage] = useState<string>("");
+  const [copied, setCopied] = useState(false);
+
+  const liveUrl = slug ? `https://${slug}.better-docs.xyz` : null;
+  const localUrl = slug ? `/docs/${slug}` : null;
+
+  const handleCopyUrl = () => {
+    if (!liveUrl) return;
+    navigator.clipboard.writeText(liveUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   if (loading) {
     return (
@@ -185,11 +199,54 @@ export default function DocsPreview({ docs, loading, error, progress = 0, progre
 
   return (
     <div
-      className="flex-1 flex rounded-2xl overflow-hidden"
+      className="flex-1 flex flex-col rounded-2xl overflow-hidden"
       style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--color-border)" }}
     >
-      <DocsSidebar navigation={filteredNav} activePage={currentPageId} onPageSelect={setActivePage} />
-      <DocsContent page={currentPage} />
+      {/* Top bar with view/deploy controls */}
+      {slug && (
+        <div
+          className="flex items-center justify-between px-4 py-2 border-b flex-shrink-0"
+          style={{ borderColor: "var(--color-border)", backgroundColor: "var(--bg-primary)" }}
+        >
+          <div className="flex items-center gap-2">
+            <span
+              className="text-xs"
+              style={{ fontFamily: "var(--font-mono)", color: "var(--color-subtle)", letterSpacing: "0.5px" }}
+            >
+              {liveUrl}
+            </span>
+            <button
+              onClick={handleCopyUrl}
+              className="p-1 rounded cursor-pointer border-none bg-transparent transition-colors"
+              style={{ color: copied ? "#2a7d4f" : "var(--color-subtle)" }}
+              title="Copy URL"
+            >
+              {copied ? <IconCheck size={13} /> : <IconCopy size={13} />}
+            </button>
+          </div>
+          <a
+            href={localUrl || "#"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs no-underline transition-colors cursor-pointer"
+            style={{
+              fontFamily: "var(--font-mono)",
+              color: "var(--bg-primary)",
+              backgroundColor: "var(--color-dark)",
+              letterSpacing: "1px",
+            }}
+          >
+            View Live
+            <IconExternalLink size={12} />
+          </a>
+        </div>
+      )}
+
+      {/* Docs content */}
+      <div className="flex flex-1 overflow-hidden">
+        <DocsSidebar navigation={filteredNav} activePage={currentPageId} onPageSelect={setActivePage} />
+        <DocsContent page={currentPage} />
+      </div>
     </div>
   );
 }

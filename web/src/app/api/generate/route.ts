@@ -18,7 +18,8 @@ export async function POST(req: Request) {
       // Persist refined docs if user is logged in
       if (userId && result.docs && body.repo_name) {
         try {
-          await saveDocs(userId, body.repo_url || "", body.repo_name, result.docs);
+          const { slug } = await saveDocs(userId, body.repo_url || "", body.repo_name, result.docs);
+          return NextResponse.json({ ...result, slug });
         } catch (e) {
           console.error("Failed to persist refined docs:", e);
         }
@@ -38,6 +39,8 @@ export async function POST(req: Request) {
       const decoder = new TextDecoder();
       let sseBuffer = "";
 
+      const encoder = new TextEncoder();
+
       const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>({
         transform(chunk, controller) {
           // Always forward the chunk to the client immediately
@@ -48,7 +51,7 @@ export async function POST(req: Request) {
             sseBuffer += decoder.decode(chunk, { stream: true });
           }
         },
-        async flush() {
+        async flush(controller) {
           // Stream ended -- check if we captured a "done" event with docs
           if (!userId) return;
           try {
@@ -62,8 +65,11 @@ export async function POST(req: Request) {
                 const dataStr = line.slice(6).trim();
                 const parsed = JSON.parse(dataStr);
                 if (parsed.docs) {
-                  await saveDocs(userId, repoUrl, repoName, parsed.docs);
-                  console.log(`Persisted streaming docs for ${repoName}`);
+                  const { slug } = await saveDocs(userId, repoUrl, repoName, parsed.docs);
+                  console.log(`Persisted streaming docs for ${repoName} -> ${slug}`);
+                  // Emit a "saved" event so the client knows the slug
+                  const savedEvent = `event: saved\ndata: ${JSON.stringify({ slug, repoName })}\n\n`;
+                  controller.enqueue(encoder.encode(savedEvent));
                 }
                 break;
               } else if (line === "") {
