@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rootDirectory": "web",
   "buildCommand": "prisma generate && next build",
   "outputDirectory": ".next",
   "installCommand": "pnpm install",
