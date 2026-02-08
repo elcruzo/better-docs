@@ -231,7 +231,7 @@ export default function DocsPreview({ docs, loading, error, progress = 0, progre
             </button>
           </div>
           <a
-            href={localUrl || "#"}
+            href={liveUrl || "#"}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs no-underline transition-colors cursor-pointer"
