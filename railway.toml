@@ -1,0 +1,36 @@
+[project]
+name = "better-docs"
+
+# ---------- Rust engine (tree-sitter + Neo4j) ----------
+[service.engine]
+rootDirectory = "/"
+buildCommand = ""
+startCommand = ""
+
+[service.engine.build]
+dockerfilePath = "Dockerfile"
+
+[service.engine.deploy]
+healthcheckPath = "/health"
+restartPolicyType = "ON_FAILURE"
+
+[[service.engine.deploy.environmentVariables]]
+name = "PORT"
+value = "3001"
+
+# ---------- Python agent (FastAPI + LangGraph) ----------
+[service.agent]
+rootDirectory = "agent"
+buildCommand = ""
+startCommand = ""
+
+[service.agent.build]
+dockerfilePath = "Dockerfile"
+
+[service.agent.deploy]
+healthcheckPath = "/health"
+restartPolicyType = "ON_FAILURE"
+
+[[service.agent.deploy.environmentVariables]]
+name = "PORT"
+value = "8000"

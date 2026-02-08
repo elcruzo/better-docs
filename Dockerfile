@@ -8,5 +8,6 @@ RUN cargo build --release
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/better-docs /usr/local/bin/better-docs
-EXPOSE 3001
+ENV PORT=3001
+EXPOSE ${PORT}
 CMD ["better-docs"]
