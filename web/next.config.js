@@ -5,7 +5,7 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: "10mb",
     },
-    proxyTimeout: 600_000, // 10 min – matches our fetch timeout
+    proxyTimeout: 300_000, // 5 min – Vercel hobby plan limit
   },
   // Allow images from GitHub avatars (used in navbar)
   images: {
