@@ -39,6 +39,12 @@ export default function RepoList({ repos, selectedRepo, onSelect, loading }: Pro
       >
         Your Repositories
       </p>
+      <p
+        className="text-xs px-5 pb-2 flex-shrink-0"
+        style={{ fontFamily: "var(--font-serif)", color: "var(--color-subtle)", fontSize: "11px" }}
+      >
+        Private repos are not yet supported
+      </p>
 
       {/* Scrollable repo list */}
       <div className="flex flex-col gap-1 p-3 overflow-y-auto flex-1" style={{ minHeight: 0 }}>
