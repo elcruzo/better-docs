@@ -4,7 +4,7 @@ import authOptions from "@/lib/auth";
 import { generateDocs, generateDocsStream, refineDocs } from "@/lib/agent";
 import { saveDocs } from "@/lib/storage";
 
-export const maxDuration = 600;
+export const maxDuration = 300;
 
 export async function POST(req: Request) {
   try {
