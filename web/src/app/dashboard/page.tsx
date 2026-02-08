@@ -106,6 +106,8 @@ export default function DashboardPage() {
           const lines = buffer.split("\n");
           buffer = lines.pop() || ""; // keep incomplete line in buffer
 
+          let receivedDone = false;
+
           for (const line of lines) {
             if (line.startsWith("event: ")) {
               currentEvent = line.slice(7).trim();
@@ -121,6 +123,7 @@ export default function DashboardPage() {
                     setProgress(parsed.progress || 0);
                     setProgressMessage(parsed.message || "");
                   } else if (currentEvent === "done") {
+                    receivedDone = true;
                     if (parsed.docs) {
                       setDocs(parsed.docs);
                       setProgress(100);
@@ -135,6 +138,7 @@ export default function DashboardPage() {
                     if (parsed.repoName) setCurrentRepoName(parsed.repoName);
                   } else if (currentEvent === "error") {
                     setError(parsed.error || "Generation failed");
+                    receivedDone = true;
                   }
                 } catch {
                   // skip malformed JSON
@@ -144,6 +148,8 @@ export default function DashboardPage() {
               currentData = "";
             }
           }
+
+          if (receivedDone) break;
         }
       } else {
         // Fallback: JSON response
@@ -163,7 +169,7 @@ export default function DashboardPage() {
       if (e instanceof DOMException && e.name === "AbortError") {
         // User cancelled -- not an error
       } else {
-        setError(e instanceof Error ? e.message : "Generation failed");
+        setError(e instanceof Error ? e.message : "Connection lost — try again for smaller repos or check your network");
       }
     } finally {
       abortRef.current = null;
