@@ -142,8 +142,8 @@ impl GraphClient {
         if !calls_batch.is_empty() {
             self.graph.run(
                 query("UNWIND $batch AS c \
-                       MATCH (caller {id: c.cid}) \
-                       MATCH (callee {name: c.name})<-[:CONTAINS]-(f:File {repo: $repo}) \
+                       MATCH (caller:Function {id: c.cid}) \
+                       MATCH (callee:Function {name: c.name})<-[:CONTAINS]-(f:File {repo: $repo}) \
                        MERGE (caller)-[:CALLS]->(callee)")
                     .param("batch", calls_batch)
                     .param("repo", repo_name)
@@ -167,7 +167,7 @@ impl GraphClient {
         if !inherits_batch.is_empty() {
             self.graph.run(
                 query("UNWIND $batch AS c \
-                       MATCH (child {id: c.cid}) \
+                       MATCH (child:Class {id: c.cid}) \
                        MATCH (parent:Class {name: c.name})<-[:CONTAINS]-(f:File {repo: $repo}) \
                        MERGE (child)-[:INHERITS]->(parent)")
                     .param("batch", inherits_batch)

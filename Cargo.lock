@@ -108,6 +108,7 @@ name = "better-docs"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "futures",
  "ignore",
  "neo4rs",
  "rayon",

@@ -21,6 +21,7 @@ tree-sitter-cpp = "0.21"
 tree-sitter-ruby = "0.21"
 tree-sitter-php = "0.22"
 neo4rs = "0.8"
+futures = "0.3"
 ignore = "0.4"
 rayon = "1.10"
 tower-http = { version = "0.5", features = ["cors"] }

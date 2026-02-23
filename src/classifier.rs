@@ -13,7 +13,15 @@ pub async fn classify(client: &GraphClient, repo_name: &str) -> ClassificationRe
     let mut consumer_score: f64 = 0.0;
     let mut devdocs_score: f64 = 0.0;
 
-    if let Ok(counts) = client.count_by_kind(repo_name).await {
+    // Run all four independent Neo4j queries concurrently instead of sequentially
+    let (counts_r, langs_r, files_r, symbols_r) = tokio::join!(
+        client.count_by_kind(repo_name),
+        client.get_file_languages(repo_name),
+        client.get_all_files(repo_name),
+        client.get_all_symbols(repo_name),
+    );
+
+    if let Ok(counts) = counts_r {
         if let Some(obj) = counts.as_object() {
             let funcs = obj.get("function").and_then(|v| v.as_i64()).unwrap_or(0);
             let classes = obj.get("class").and_then(|v| v.as_i64()).unwrap_or(0);
@@ -34,7 +42,7 @@ pub async fn classify(client: &GraphClient, repo_name: &str) -> ClassificationRe
         }
     }
 
-    if let Ok(langs) = client.get_file_languages(repo_name).await {
+    if let Ok(langs) = langs_r {
         if let Some(obj) = langs.as_object() {
             let has_python = obj.contains_key("Python");
             let has_js = obj.contains_key("JavaScript") || obj.contains_key("TypeScript");
@@ -55,7 +63,7 @@ pub async fn classify(client: &GraphClient, repo_name: &str) -> ClassificationRe
         }
     }
 
-    if let Ok(files) = client.get_all_files(repo_name).await {
+    if let Ok(files) = files_r {
         let paths: Vec<String> = files.iter()
             .filter_map(|f| f.get("path").and_then(|p| p.as_str()).map(|s| s.to_lowercase()))
             .collect();
@@ -71,7 +79,7 @@ pub async fn classify(client: &GraphClient, repo_name: &str) -> ClassificationRe
         if has_sdk { signals.push("SDK/client files found".into()); devdocs_score += 1.5; }
     }
 
-    if let Ok(symbols) = client.get_all_symbols(repo_name).await {
+    if let Ok(symbols) = symbols_r {
         let has_decorators = symbols.iter().any(|s| {
             s.get("signature").and_then(|v| v.as_str())
                 .map(|sig| sig.contains("@app.") || sig.contains("@router.") || sig.contains("app.get") || sig.contains("app.post"))

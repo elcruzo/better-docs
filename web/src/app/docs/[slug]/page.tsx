@@ -1,15 +1,18 @@
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import { getDocs } from "@/lib/storage";
 import PublicDocsViewer from "./PublicDocsViewer";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
+
+const getCachedDocs = cache((slug: string) => getDocs(slug));
 
 interface Props {
   params: { slug: string };
 }
 
 export async function generateMetadata({ params }: Props) {
-  const result = await getDocs(params.slug);
+  const result = await getCachedDocs(params.slug);
   if (!result) return { title: "Not Found" };
   return {
     title: `${result.project.repoName} — better-docs`,
@@ -18,7 +21,7 @@ export async function generateMetadata({ params }: Props) {
 }
 
 export default async function PublicDocsPage({ params }: Props) {
-  const result = await getDocs(params.slug);
+  const result = await getCachedDocs(params.slug);
   if (!result) notFound();
 
   const { project } = result;

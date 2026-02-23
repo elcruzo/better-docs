@@ -1,4 +1,4 @@
-import os, shutil, logging, time
+import asyncio, os, shutil, logging, time
 from typing import TypedDict, Optional, Callable
 from langgraph.graph import StateGraph, END
 from app.nodes.clone import clone_repo, get_repo_name
@@ -25,20 +25,25 @@ async def clone_node(state: PipelineState) -> PipelineState:
     log.info("[1/5 clone] Cloning %s", state["repo_url"])
     t = time.time()
     try:
-        path = clone_repo(state["repo_url"])
+        path = await clone_repo(state["repo_url"])
         name = get_repo_name(state["repo_url"])
         readme = ""
         for f in ["README.md", "readme.md", "README.rst", "README"]:
             rp = os.path.join(path, f)
             if os.path.exists(rp):
-                with open(rp) as fh:
-                    readme = fh.read()
+                readme = await asyncio.to_thread(_read_file, rp)
                 break
         log.info("[1/5 clone] Done in %.1fs -- name=%s readme=%d chars path=%s", time.time()-t, name, len(readme), path)
         return {**state, "repo_path": path, "repo_name": name, "readme": readme}
     except Exception as e:
         log.error("[1/5 clone] FAILED: %s", e)
         return {**state, "error": str(e)}
+
+
+def _read_file(path: str) -> str:
+    with open(path) as fh:
+        return fh.read()
+
 
 async def parse_node(state: PipelineState) -> PipelineState:
     if state.get("error"):
@@ -52,6 +57,10 @@ async def parse_node(state: PipelineState) -> PipelineState:
     except Exception as e:
         log.error("[2/5 parse] FAILED: %s", e)
         return {**state, "error": f"Parse failed: {e}"}
+    finally:
+        # Repo is no longer needed after parsing -- free disk space early
+        if state.get("repo_path"):
+            await asyncio.to_thread(shutil.rmtree, state["repo_path"], True)
 
 async def classify_node(state: PipelineState) -> PipelineState:
     if state.get("error"):
@@ -94,13 +103,9 @@ async def generate_node(state: PipelineState) -> PipelineState:
         docs = await generate_docs(state["structure"], state["doc_type"], state["repo_name"], state.get("readme", ""))
         pages = docs.get("pages", {})
         log.info("[5/5 generate] Done in %.1fs -- %d pages generated", time.time()-t, len(pages))
-        if state.get("repo_path"):
-            shutil.rmtree(state["repo_path"], ignore_errors=True)
         return {**state, "docs": docs}
     except Exception as e:
         log.error("[5/5 generate] FAILED: %s", e)
-        if state.get("repo_path"):
-            shutil.rmtree(state["repo_path"], ignore_errors=True)
         return {**state, "error": f"Generation failed: {e}"}
 
 def build_pipeline():
@@ -112,8 +117,11 @@ def build_pipeline():
     graph.add_node("generate", generate_node)
     graph.set_entry_point("clone")
     graph.add_edge("clone", "parse")
+    # Fan-out: classify and structure are independent, run concurrently
     graph.add_edge("parse", "classify")
-    graph.add_edge("classify", "structure")
+    graph.add_edge("parse", "structure")
+    # Fan-in: generate waits for both
+    graph.add_edge("classify", "generate")
     graph.add_edge("structure", "generate")
     graph.add_edge("generate", END)
     return graph.compile()
@@ -126,10 +134,7 @@ async def run_pipeline_streaming(
     doc_type: str | None,
     on_progress: Callable[[str, int, str], None],
 ) -> dict:
-    """Run the full pipeline with progress callbacks for SSE streaming.
-    This runs the same logic as the LangGraph pipeline but step-by-step
-    so we can emit progress events between steps.
-    """
+    """Run the full pipeline with progress callbacks for SSE streaming."""
     state: PipelineState = {
         "repo_url": repo_url,
         "repo_path": None,
@@ -150,7 +155,7 @@ async def run_pipeline_streaming(
         return {"error": state["error"]}
 
     # Step 2: Parse
-    on_progress("parse", 15, f"Parsing codebase with tree-sitter...")
+    on_progress("parse", 15, "Parsing codebase with tree-sitter...")
     state = await parse_node(state)
     if state.get("error"):
         return {"error": state["error"]}
@@ -159,24 +164,26 @@ async def run_pipeline_streaming(
     file_count = stats.get("files_processed", stats.get("files_indexed", "?"))
     on_progress("parse", 25, f"Parsed {file_count} files")
 
-    # Step 3: Classify
-    if not state.get("doc_type"):
-        on_progress("classify", 28, "Classifying documentation type...")
-    state = await classify_node(state)
+    # Steps 3+4: Classify and Structure run concurrently
+    on_progress("classify", 28, "Classifying & building structure...")
 
-    on_progress("classify", 32, f"Doc type: {state.get('doc_type', 'devdocs')}")
+    classify_task = asyncio.create_task(classify_node(state))
+    structure_task = asyncio.create_task(structure_node(state))
+    classify_result, structure_result = await asyncio.gather(classify_task, structure_task)
 
-    # Step 4: Structure
-    on_progress("structure", 35, "Building code structure graph...")
-    state = await structure_node(state)
+    # Merge results from both concurrent steps
+    state = {**state, **classify_result, **structure_result}
+
     if state.get("error"):
         return {"error": state["error"]}
+
+    on_progress("classify", 32, f"Doc type: {state.get('doc_type', 'devdocs')}")
 
     structure = state.get("structure", [])
     total_symbols = sum(len(f.get("symbols", [])) for f in structure)
     on_progress("structure", 38, f"Mapped {len(structure)} files, {total_symbols} symbols")
 
-    # Step 5: Generate (with per-page progress)
+    # Step 5: Generate
     on_progress("generate", 40, "Planning documentation structure...")
     try:
         docs = await generate_docs(
@@ -187,13 +194,7 @@ async def run_pipeline_streaming(
             on_progress=on_progress,
         )
     except Exception as e:
-        if state.get("repo_path"):
-            shutil.rmtree(state["repo_path"], ignore_errors=True)
         return {"error": f"Generation failed: {e}"}
-
-    # Cleanup
-    if state.get("repo_path"):
-        shutil.rmtree(state["repo_path"], ignore_errors=True)
 
     return {
         "docs": docs,

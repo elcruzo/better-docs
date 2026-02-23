@@ -67,8 +67,6 @@ export async function listUserProjects(userId: string) {
 }
 
 export async function deleteProject(slug: string, userId: string): Promise<boolean> {
-  const project = await prisma.project.findUnique({ where: { slug }, select: { userId: true } });
-  if (!project || project.userId !== userId) return false;
-  await prisma.project.delete({ where: { slug } });
-  return true;
+  const result = await prisma.project.deleteMany({ where: { slug, userId } });
+  return result.count > 0;
 }
