@@ -33,6 +33,7 @@ class GeneratedDocs(BaseModel):
 class GenerateRequest(BaseModel):
     repo_url: str
     doc_type: str | None = None
+    github_token: str | None = None
 
 class RefineRequest(BaseModel):
     prompt: str

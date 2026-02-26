@@ -4,12 +4,15 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-async def clone_repo(repo_url: str) -> str:
+async def clone_repo(repo_url: str, github_token: str | None = None) -> str:
+    url = repo_url
+    if github_token and "github.com" in url:
+        url = url.replace("https://github.com", f"https://x-access-token:{github_token}@github.com")
     tmp = tempfile.mkdtemp(prefix="betterdocs_")
     logger.info("Cloning %s into %s", repo_url, tmp)
     try:
         proc = await asyncio.create_subprocess_exec(
-            "git", "clone", "--depth", "1", repo_url, tmp,
+            "git", "clone", "--depth", "1", url, tmp,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

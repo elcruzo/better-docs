@@ -4,7 +4,7 @@ const AGENT_URL = process.env.AGENT_URL || "http://localhost:8000";
 
 // --- Non-streaming (kept for refine + fallback) ---
 
-export async function generateDocs(repoUrl: string, docType?: string): Promise<{ docs: GeneratedDocs; classification?: Record<string, unknown>; index_stats?: Record<string, unknown> }> {
+export async function generateDocs(repoUrl: string, docType?: string, githubToken?: string): Promise<{ docs: GeneratedDocs; classification?: Record<string, unknown>; index_stats?: Record<string, unknown> }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 600_000);
 
@@ -12,7 +12,7 @@ export async function generateDocs(repoUrl: string, docType?: string): Promise<{
     const res = await fetch(`${AGENT_URL}/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ repo_url: repoUrl, doc_type: docType || null }),
+      body: JSON.stringify({ repo_url: repoUrl, doc_type: docType || null, github_token: githubToken || null }),
       signal: controller.signal,
     });
     if (!res.ok) {
@@ -57,6 +57,7 @@ export interface ProgressEvent {
 export async function generateDocsStream(
   repoUrl: string,
   docType?: string,
+  githubToken?: string,
 ): Promise<ReadableStream<Uint8Array>> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 600_000);
@@ -64,7 +65,7 @@ export async function generateDocsStream(
   const res = await fetch(`${AGENT_URL}/generate/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ repo_url: repoUrl, doc_type: docType || null }),
+    body: JSON.stringify({ repo_url: repoUrl, doc_type: docType || null, github_token: githubToken || null }),
     signal: controller.signal,
   });
 

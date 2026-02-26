@@ -14,6 +14,7 @@ class PipelineState(TypedDict):
     repo_path: Optional[str]
     repo_name: Optional[str]
     doc_type: Optional[str]
+    github_token: Optional[str]
     index_stats: Optional[dict]
     structure: Optional[list]
     classification: Optional[dict]
@@ -25,7 +26,7 @@ async def clone_node(state: PipelineState) -> PipelineState:
     log.info("[1/5 clone] Cloning %s", state["repo_url"])
     t = time.time()
     try:
-        path = await clone_repo(state["repo_url"])
+        path = await clone_repo(state["repo_url"], state.get("github_token"))
         name = get_repo_name(state["repo_url"])
         readme = ""
         for f in ["README.md", "readme.md", "README.rst", "README"]:
@@ -133,6 +134,7 @@ async def run_pipeline_streaming(
     repo_url: str,
     doc_type: str | None,
     on_progress: Callable[[str, int, str], None],
+    github_token: str | None = None,
 ) -> dict:
     """Run the full pipeline with progress callbacks for SSE streaming."""
     state: PipelineState = {
@@ -140,6 +142,7 @@ async def run_pipeline_streaming(
         "repo_path": None,
         "repo_name": None,
         "doc_type": doc_type,
+        "github_token": github_token,
         "index_stats": None,
         "structure": None,
         "classification": None,

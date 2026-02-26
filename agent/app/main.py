@@ -29,6 +29,7 @@ async def generate(req: GenerateRequest):
         "repo_path": None,
         "repo_name": None,
         "doc_type": req.doc_type,
+        "github_token": req.github_token,
         "index_stats": None,
         "structure": None,
         "classification": None,
@@ -66,7 +67,7 @@ async def generate_stream(req: GenerateRequest):
 
     async def run_and_finish():
         try:
-            result = await run_pipeline_streaming(req.repo_url, req.doc_type, on_progress)
+            result = await run_pipeline_streaming(req.repo_url, req.doc_type, on_progress, req.github_token)
             if result.get("error"):
                 queue.put_nowait({"event": "error", "data": {"error": result["error"]}})
             else:

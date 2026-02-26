@@ -11,6 +11,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const session = await getServerSession(authOptions);
     const userId = (session as any)?.userId as string | undefined;
+    const accessToken = (session as any)?.accessToken as string | undefined;
 
     if (body.action === "refine") {
       const result = await refineDocs(body.current_docs, body.prompt, body.repo_name);
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
 
     // Use SSE streaming if requested
     if (body.stream) {
-      const rawStream = await generateDocsStream(body.repo_url, body.doc_type);
+      const rawStream = await generateDocsStream(body.repo_url, body.doc_type, accessToken);
       const repoName = body.repo_url?.split("/").pop()?.replace(".git", "") || "unknown";
       const repoUrl = body.repo_url || "";
 
@@ -94,7 +95,7 @@ export async function POST(req: Request) {
     }
 
     // Fallback to non-streaming
-    const result = await generateDocs(body.repo_url, body.doc_type);
+    const result = await generateDocs(body.repo_url, body.doc_type, accessToken);
 
     // Persist docs if user is logged in
     if (userId && result.docs) {
