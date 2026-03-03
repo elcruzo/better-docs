@@ -6,7 +6,7 @@ const AGENT_URL = process.env.AGENT_URL || "http://localhost:8000";
 
 export async function generateDocs(repoUrl: string, docType?: string, githubToken?: string): Promise<{ docs: GeneratedDocs; classification?: Record<string, unknown>; index_stats?: Record<string, unknown> }> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 600_000);
+  const timeout = setTimeout(() => controller.abort(), 210_000);
 
   try {
     const res = await fetch(`${AGENT_URL}/generate`, {
@@ -60,7 +60,7 @@ export async function generateDocsStream(
   githubToken?: string,
 ): Promise<ReadableStream<Uint8Array>> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 600_000);
+  const timeout = setTimeout(() => controller.abort(), 210_000);
 
   const res = await fetch(`${AGENT_URL}/generate/stream`, {
     method: "POST",

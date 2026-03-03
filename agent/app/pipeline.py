@@ -103,10 +103,13 @@ File tree:
 
 Return the doc_type JSON."""
 
-        response = await _classify_llm.ainvoke([
-            SystemMessage(content=CLASSIFY_PROMPT),
-            HumanMessage(content=user_msg),
-        ])
+        response = await asyncio.wait_for(
+            _classify_llm.ainvoke([
+                SystemMessage(content=CLASSIFY_PROMPT),
+                HumanMessage(content=user_msg),
+            ]),
+            timeout=30,
+        )
         text = response.content.strip()
         if text.startswith("```"):
             text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()

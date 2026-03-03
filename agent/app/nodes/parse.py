@@ -6,7 +6,7 @@ log = logging.getLogger("agent")
 
 _client = httpx.AsyncClient(
     base_url=ENGINE_URL,
-    timeout=180,
+    timeout=30,
     limits=httpx.Limits(max_connections=30, max_keepalive_connections=10),
 )
 

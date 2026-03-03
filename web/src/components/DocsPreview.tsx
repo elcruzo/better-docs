@@ -64,7 +64,7 @@ export default function DocsPreview({ docs, loading, generating, error, progress
               className="text-xs text-center"
               style={{ fontFamily: "var(--font-serif)", color: "var(--color-subtle)" }}
             >
-              This may take up to 10 minutes for larger repos
+              This usually takes 1–2 minutes
             </p>
           </div>
 

@@ -31,7 +31,7 @@ Return JSON matching this schema:
 }
 
 Rules:
-- Create between 6 and 15 pages MAXIMUM. Combine related topics into single pages rather than making many small ones.
+- Create between 4 and 9 pages MAXIMUM. Combine related topics into single pages rather than making many small ones.
 - Cover the ENTIRE codebase. Every important file/symbol should appear in at least one page.
 - Group logically: getting started, core concepts, API reference, configuration, etc.
 - For consumer docs: getting started, features, guides, configuration, FAQ.
@@ -42,7 +42,7 @@ Rules:
 
 
 def _build_file_tree(structure: list[dict]) -> str:
-    """Full file tree with all symbol names -- compact but complete, zero truncation."""
+    """File tree with all symbol names — compact but complete."""
     lines = []
     for f in structure:
         path = f.get("path", "")
@@ -172,6 +172,9 @@ Rules:
 - Return ONLY valid JSON."""
 
 
+LLM_CALL_TIMEOUT = 60
+
+
 async def _plan_docs(structure: list[dict], doc_type: str, repo_name: str, readme: str) -> dict:
     """Phase 1: get a documentation plan from the full file tree."""
     file_tree = _build_file_tree(structure)
@@ -185,11 +188,14 @@ Complete file tree with symbols:
 
 Return the documentation plan as JSON."""
 
-    response = await llm.ainvoke([SystemMessage(content=PLAN_PROMPT), HumanMessage(content=user_msg)])
+    response = await asyncio.wait_for(
+        llm.ainvoke([SystemMessage(content=PLAN_PROMPT), HumanMessage(content=user_msg)]),
+        timeout=LLM_CALL_TIMEOUT,
+    )
     return _parse_json(response.content)
 
 
-MAX_PAGE_RETRIES = 2  # retry up to 2 extra times on failure
+MAX_PAGE_RETRIES = 1
 
 
 async def _generate_page(page_id: str, page_plan: dict, structure: list[dict], doc_type: str, repo_name: str, readme: str) -> tuple[str, dict]:
@@ -210,12 +216,15 @@ Return the page JSON."""
     last_error = None
     for attempt in range(1 + MAX_PAGE_RETRIES):
         try:
-            response = await llm.ainvoke([SystemMessage(content=PAGE_PROMPT), HumanMessage(content=user_msg)])
+            response = await asyncio.wait_for(
+                llm.ainvoke([SystemMessage(content=PAGE_PROMPT), HumanMessage(content=user_msg)]),
+                timeout=LLM_CALL_TIMEOUT,
+            )
             return page_id, _parse_json(response.content)
         except Exception as e:
             last_error = e
             if attempt < MAX_PAGE_RETRIES:
-                await asyncio.sleep(1 * (attempt + 1))  # brief back-off: 1s, 2s
+                await asyncio.sleep(2)
     raise last_error
 
 
@@ -260,7 +269,7 @@ async def generate_docs(
     if not pages_plan:
         return plan
 
-    MAX_PAGES = 15
+    MAX_PAGES = 9
     if len(pages_plan) > MAX_PAGES:
         trimmed_ids = list(pages_plan.keys())[:MAX_PAGES]
         pages_plan = {k: pages_plan[k] for k in trimmed_ids}
@@ -283,7 +292,7 @@ async def generate_docs(
             "navigation": plan.get("navigation", []),
         })
 
-    sem = asyncio.Semaphore(5)
+    sem = asyncio.Semaphore(8)
     completed = {"count": 0}
 
     async def _generate_page_limited(page_id: str, page_plan: dict) -> tuple[str, dict]:
