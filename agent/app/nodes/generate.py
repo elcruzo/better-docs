@@ -172,7 +172,7 @@ Rules:
 - Return ONLY valid JSON."""
 
 
-LLM_CALL_TIMEOUT = 60
+LLM_CALL_TIMEOUT = 90
 
 
 async def _plan_docs(structure: list[dict], doc_type: str, repo_name: str, readme: str) -> dict:

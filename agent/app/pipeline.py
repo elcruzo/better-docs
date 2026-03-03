@@ -108,7 +108,7 @@ Return the doc_type JSON."""
                 SystemMessage(content=CLASSIFY_PROMPT),
                 HumanMessage(content=user_msg),
             ]),
-            timeout=30,
+            timeout=45,
         )
         text = response.content.strip()
         if text.startswith("```"):
