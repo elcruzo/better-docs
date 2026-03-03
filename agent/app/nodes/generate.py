@@ -237,6 +237,7 @@ def _parse_json(text: str) -> dict:
 # --- Main entry point ---
 
 ProgressCallback = Optional[Callable[[str, int, str], None]]
+PageCallback = Optional[Callable[[str, dict], None]]
 
 
 async def generate_docs(
@@ -245,8 +246,10 @@ async def generate_docs(
     repo_name: str,
     readme_content: str = "",
     on_progress: ProgressCallback = None,
+    on_page: PageCallback = None,
 ) -> dict:
-    """Generate full documentation. on_progress(step, percent, message) is called for SSE streaming."""
+    """Generate full documentation. on_progress(step, percent, message) is called for SSE streaming.
+    on_page(page_id, page_data) is called as each page finishes so it can be streamed to the client."""
 
     # Phase 1: plan
     if on_progress:
@@ -255,15 +258,12 @@ async def generate_docs(
 
     pages_plan = plan.get("pages", {})
     if not pages_plan:
-        return plan  # fallback: plan itself might be complete docs
+        return plan
 
-    # Safety cap: if LLM planned too many pages, trim to 15
     MAX_PAGES = 15
     if len(pages_plan) > MAX_PAGES:
-        # Keep only the first MAX_PAGES entries (they're ordered by the LLM's priority)
         trimmed_ids = list(pages_plan.keys())[:MAX_PAGES]
         pages_plan = {k: pages_plan[k] for k in trimmed_ids}
-        # Also trim navigation to only reference kept pages
         nav = plan.get("navigation", [])
         for group in nav:
             group["pages"] = [p for p in group.get("pages", []) if p in pages_plan]
@@ -274,8 +274,15 @@ async def generate_docs(
     if on_progress:
         on_progress("generate", 42, f"Generating {total_pages} pages...")
 
-    # Phase 2: generate pages with concurrency limit (Semaphore)
-    # Cap at 5 to avoid Bedrock connection pool overflow (pool=10)
+    # Stream the plan skeleton immediately so the frontend can render nav
+    if on_page:
+        on_page("__plan__", {
+            "doc_type": plan.get("doc_type", doc_type),
+            "title": plan.get("title", repo_name),
+            "description": plan.get("description", ""),
+            "navigation": plan.get("navigation", []),
+        })
+
     sem = asyncio.Semaphore(5)
     completed = {"count": 0}
 
@@ -284,8 +291,10 @@ async def generate_docs(
             result = await _generate_page(page_id, page_plan, structure, doc_type, repo_name, readme_content)
             completed["count"] += 1
             if on_progress:
-                pct = 42 + int((completed["count"] / total_pages) * 55)  # 42% -> 97%
+                pct = 42 + int((completed["count"] / total_pages) * 55)
                 on_progress("generate", pct, f"Generated page {completed['count']}/{total_pages}: {page_plan.get('title', page_id)}")
+            if on_page:
+                on_page(result[0], result[1])
             return result
 
     tasks = [

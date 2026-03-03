@@ -1,14 +1,15 @@
 "use client";
 
-import type { NavGroup } from "@/types";
+import type { NavGroup, DocPage } from "@/types";
 
 interface Props {
   navigation: NavGroup[];
   activePage: string;
   onPageSelect: (page: string) => void;
+  loadedPages?: Record<string, DocPage>;
 }
 
-export default function DocsSidebar({ navigation, activePage, onPageSelect }: Props) {
+export default function DocsSidebar({ navigation, activePage, onPageSelect, loadedPages }: Props) {
   return (
     <aside
       className="w-56 flex-shrink-0 overflow-y-auto py-5 px-3 border-r"
@@ -29,22 +30,37 @@ export default function DocsSidebar({ navigation, activePage, onPageSelect }: Pr
             {group.group}
           </p>
           <div className="flex flex-col gap-0.5">
-            {group.pages.map((page) => (
-              <button
-                key={page}
-                onClick={() => onPageSelect(page)}
-                className="text-left px-3 py-1.5 rounded-lg cursor-pointer transition-colors text-sm"
-                style={{
-                  fontFamily: "var(--font-sans)",
-                  fontWeight: activePage === page ? 500 : 400,
-                  color: activePage === page ? "var(--bg-primary)" : "var(--color-muted)",
-                  backgroundColor: activePage === page ? "var(--color-dark)" : "transparent",
-                  border: "none",
-                }}
-              >
-                {page.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
-              </button>
-            ))}
+            {group.pages.map((page) => {
+              const isLoaded = loadedPages ? !!(loadedPages[page] || loadedPages[page.toLowerCase()]) : true;
+              return (
+                <button
+                  key={page}
+                  onClick={() => onPageSelect(page)}
+                  className="text-left px-3 py-1.5 rounded-lg cursor-pointer transition-colors text-sm flex items-center gap-2"
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontWeight: activePage === page ? 500 : 400,
+                    color: activePage === page
+                      ? "var(--bg-primary)"
+                      : isLoaded
+                        ? "var(--color-muted)"
+                        : "var(--color-subtle)",
+                    backgroundColor: activePage === page ? "var(--color-dark)" : "transparent",
+                    border: "none",
+                    opacity: isLoaded ? 1 : 0.6,
+                    transition: "all 0.3s ease",
+                  }}
+                >
+                  {!isLoaded && (
+                    <span
+                      className="inline-block w-2 h-2 rounded-full animate-pulse flex-shrink-0"
+                      style={{ backgroundColor: "var(--color-subtle)" }}
+                    />
+                  )}
+                  <span>{page.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       ))}

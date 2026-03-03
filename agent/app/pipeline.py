@@ -7,7 +7,7 @@ from app.nodes.generate import generate_docs
 
 log = logging.getLogger("agent")
 
-ProgressCallback = Optional[Callable[[str, int, str], None]]
+PageCallback = Optional[Callable[[str, dict], None]]
 
 class PipelineState(TypedDict):
     repo_url: str
@@ -130,13 +130,16 @@ def build_pipeline():
 
 # --- Streaming pipeline runner (bypasses LangGraph for SSE support) ---
 
+
 async def run_pipeline_streaming(
     repo_url: str,
     doc_type: str | None,
     on_progress: Callable[[str, int, str], None],
     github_token: str | None = None,
+    on_page: PageCallback = None,
 ) -> dict:
-    """Run the full pipeline with progress callbacks for SSE streaming."""
+    """Run the full pipeline with progress callbacks for SSE streaming.
+    on_page(page_id, page_data) streams each completed page immediately."""
     state: PipelineState = {
         "repo_url": repo_url,
         "repo_path": None,
@@ -195,6 +198,7 @@ async def run_pipeline_streaming(
             state["repo_name"],
             state.get("readme", ""),
             on_progress=on_progress,
+            on_page=on_page,
         )
     except Exception as e:
         return {"error": f"Generation failed: {e}"}

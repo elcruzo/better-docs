@@ -122,6 +122,28 @@ export default function DashboardPage() {
                   if (currentEvent === "progress") {
                     setProgress(parsed.progress || 0);
                     setProgressMessage(parsed.message || "");
+                  } else if (currentEvent === "page") {
+                    // Streamed page data -- build docs incrementally
+                    const { page_id, page } = parsed;
+                    if (page_id === "__plan__") {
+                      // Plan skeleton: set docs shell with empty pages
+                      setDocs({
+                        doc_type: page.doc_type || "",
+                        title: page.title || "",
+                        description: page.description || "",
+                        navigation: page.navigation || [],
+                        pages: {},
+                      });
+                    } else if (page_id && page) {
+                      // Individual page arrived -- merge into existing docs
+                      setDocs((prev) => {
+                        if (!prev) return prev;
+                        return {
+                          ...prev,
+                          pages: { ...prev.pages, [page_id]: page },
+                        };
+                      });
+                    }
                   } else if (currentEvent === "done") {
                     receivedDone = true;
                     if (parsed.docs) {
@@ -322,7 +344,7 @@ export default function DashboardPage() {
 
       {/* Main area */}
       <div className="flex-1 flex flex-col p-4 gap-4 overflow-hidden">
-        <DocsPreview docs={docs} loading={generating} error={error} progress={progress} progressMessage={progressMessage} slug={currentSlug} />
+        <DocsPreview docs={docs} loading={generating && !docs} generating={generating} error={error} progress={progress} progressMessage={progressMessage} slug={currentSlug} />
         <PromptBar onSubmit={handleRefine} loading={refining || generating} disabled={!docs} />
       </div>
     </div>

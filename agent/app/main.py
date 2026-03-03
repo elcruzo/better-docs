@@ -65,9 +65,12 @@ async def generate_stream(req: GenerateRequest):
     def on_progress(step: str, progress: int, message: str):
         queue.put_nowait({"event": "progress", "data": {"step": step, "progress": progress, "message": message}})
 
+    def on_page(page_id: str, page_data: dict):
+        queue.put_nowait({"event": "page", "data": {"page_id": page_id, "page": page_data}})
+
     async def run_and_finish():
         try:
-            result = await run_pipeline_streaming(req.repo_url, req.doc_type, on_progress, req.github_token)
+            result = await run_pipeline_streaming(req.repo_url, req.doc_type, on_progress, req.github_token, on_page)
             if result.get("error"):
                 queue.put_nowait({"event": "error", "data": {"error": result["error"]}})
             else:

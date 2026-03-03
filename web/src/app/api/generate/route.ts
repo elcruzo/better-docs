@@ -44,10 +44,8 @@ export async function POST(req: Request) {
 
       const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>({
         transform(chunk, controller) {
-          // Always forward the chunk to the client immediately
           controller.enqueue(chunk);
 
-          // Also buffer it so we can parse SSE events
           if (userId) {
             sseBuffer += decoder.decode(chunk, { stream: true });
           }

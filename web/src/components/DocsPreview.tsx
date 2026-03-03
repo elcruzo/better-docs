@@ -9,6 +9,7 @@ import DocsContent from "./DocsContent";
 interface DocsPreviewProps {
   docs: GeneratedDocs | null;
   loading?: boolean;
+  generating?: boolean;
   error?: string | null;
   progress?: number;
   progressMessage?: string;
@@ -30,7 +31,7 @@ function getStepLabel(message: string): string {
   return "Processing";
 }
 
-export default function DocsPreview({ docs, loading, error, progress = 0, progressMessage = "", slug }: DocsPreviewProps) {
+export default function DocsPreview({ docs, loading, generating, error, progress = 0, progressMessage = "", slug }: DocsPreviewProps) {
   const [activePage, setActivePage] = useState<string>("");
   const [copied, setCopied] = useState(false);
 
@@ -184,30 +185,59 @@ export default function DocsPreview({ docs, loading, error, progress = 0, progre
 
   const currentPageId = activePage || docs.navigation[0]?.pages[0] || "";
 
-  // Fuzzy page lookup: try exact match first, then case-insensitive
   const findPage = (id: string) => {
     if (docs.pages[id]) return docs.pages[id];
-    // Try case-insensitive match
     const lower = id.toLowerCase();
     const key = Object.keys(docs.pages).find((k) => k.toLowerCase() === lower);
     return key ? docs.pages[key] : null;
   };
 
   const currentPage = findPage(currentPageId);
+  const pageReady = !!currentPage;
 
-  // Filter navigation to only include pages that actually exist
   const filteredNav = docs.navigation
     .map((group) => ({
       ...group,
-      pages: group.pages.filter((p) => findPage(p) !== null),
+      pages: group.pages.map((p) => p),
     }))
     .filter((group) => group.pages.length > 0);
+
+  const totalNavPages = filteredNav.reduce((sum, g) => sum + g.pages.length, 0);
+  const loadedPages = Object.keys(docs.pages).length;
 
   return (
     <div
       className="flex-1 flex flex-col rounded-2xl overflow-hidden"
       style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--color-border)" }}
     >
+      {/* Generating progress bar */}
+      {generating && (
+        <div
+          className="flex items-center gap-3 px-4 py-2 border-b flex-shrink-0"
+          style={{ borderColor: "var(--color-border)", backgroundColor: "var(--bg-primary)" }}
+        >
+          <div
+            className="flex-1 h-1 rounded-full overflow-hidden"
+            style={{ backgroundColor: "var(--color-border)" }}
+          >
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${Math.max(progress, 2)}%`,
+                backgroundColor: "var(--color-dark)",
+                transition: "width 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
+              }}
+            />
+          </div>
+          <span
+            className="text-xs tabular-nums whitespace-nowrap"
+            style={{ fontFamily: "var(--font-mono)", color: "var(--color-subtle)", letterSpacing: "0.5px" }}
+          >
+            {loadedPages}/{totalNavPages} pages &middot; {progress}%
+          </span>
+        </div>
+      )}
+
       {/* Top bar with view/deploy controls */}
       {slug && (
         <div
@@ -250,8 +280,30 @@ export default function DocsPreview({ docs, loading, error, progress = 0, progre
 
       {/* Docs content */}
       <div className="flex flex-1 overflow-hidden">
-        <DocsSidebar navigation={filteredNav} activePage={currentPageId} onPageSelect={setActivePage} />
-        <DocsContent page={currentPage} />
+        <DocsSidebar
+          navigation={filteredNav}
+          activePage={currentPageId}
+          onPageSelect={setActivePage}
+          loadedPages={docs.pages}
+        />
+        {pageReady ? (
+          <DocsContent page={currentPage} />
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-2">
+              <div
+                className="w-5 h-5 border-2 rounded-full animate-spin"
+                style={{ borderColor: "var(--color-border)", borderTopColor: "var(--color-dark)" }}
+              />
+              <p
+                className="text-xs"
+                style={{ fontFamily: "var(--font-mono)", color: "var(--color-subtle)", letterSpacing: "0.5px" }}
+              >
+                {generating ? "Generating this page..." : "Page not available"}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
