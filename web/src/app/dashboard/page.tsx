@@ -402,7 +402,7 @@ export default function DashboardPage() {
 
       {/* Main area */}
       <div className="flex-1 flex flex-col p-2 md:p-4 overflow-hidden min-w-0">
-        <div className="flex-1 overflow-hidden min-h-0 mb-2 md:mb-4">
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0 mb-2 md:mb-4">
           <DocsPreview docs={docs} loading={generating && !docs} generating={generating} refining={refining} error={error} progress={progress} progressMessage={progressMessage} slug={currentSlug} />
         </div>
         <div className="flex-shrink-0">
