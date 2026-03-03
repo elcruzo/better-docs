@@ -35,3 +35,6 @@ code { font-family: var(--font-mono); }
 
 ::-webkit-scrollbar { width: 6px; background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--color-subtle); border-radius: 3px; }
+
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }

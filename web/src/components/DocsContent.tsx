@@ -234,7 +234,10 @@ export default function DocsContent({ page }: { page: DocPage | null }) {
 
   return (
     <div className="flex-1 flex overflow-hidden">
-      <article ref={scrollRef} className="flex-1 overflow-y-auto px-10 py-8 max-w-3xl">
+      <article
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto px-5 md:px-10 py-8 max-w-3xl hide-scrollbar"
+      >
         <h1
           className="text-3xl mb-2"
           style={{ fontFamily: "var(--font-sans)", fontWeight: 500, color: "var(--color-dark)", letterSpacing: "-0.03em" }}

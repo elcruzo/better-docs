@@ -148,7 +148,20 @@ export default function DashboardPage() {
                   } else if (currentEvent === "done") {
                     receivedDone = true;
                     if (parsed.docs) {
-                      setDocs(parsed.docs);
+                      setDocs((prev: GeneratedDocs | null) => {
+                        if (!prev) return parsed.docs;
+                        const mergedPages = { ...prev.pages };
+                        for (const [id, page] of Object.entries(parsed.docs.pages || {})) {
+                          mergedPages[id] = page as import("@/types").DocPage;
+                        }
+                        return {
+                          doc_type: parsed.docs.doc_type || prev.doc_type,
+                          title: parsed.docs.title || prev.title,
+                          description: parsed.docs.description || prev.description,
+                          navigation: parsed.docs.navigation || prev.navigation,
+                          pages: mergedPages,
+                        };
+                      });
                       setProgress(100);
                       setProgressMessage("Done!");
                       refreshHistory();
@@ -388,6 +401,44 @@ export default function DashboardPage() {
         <DocsPreview docs={docs} loading={generating && !docs} generating={generating} error={error} progress={progress} progressMessage={progressMessage} slug={currentSlug} />
         <PromptBar onSubmit={handleRefine} loading={refining || generating} disabled={!docs} />
       </div>
+
+      {/* Mobile bottom bar: selected repo + generate */}
+      {selectedRepo && !sidebarOpen && !docs && (
+        <div
+          className="md:hidden fixed bottom-0 left-0 right-0 z-30 flex items-center gap-3 px-4 py-3 border-t"
+          style={{ backgroundColor: "var(--bg-primary)", borderColor: "var(--color-border)" }}
+        >
+          <div className="flex-1 min-w-0">
+            <p className="text-sm truncate" style={{ fontFamily: "var(--font-sans)", fontWeight: 500, color: "var(--color-dark)" }}>
+              {selectedRepo.name}
+            </p>
+            <p className="text-xs truncate" style={{ fontFamily: "var(--font-mono)", color: "var(--color-subtle)" }}>
+              {docType === "auto" ? "Auto-detect" : docType}
+            </p>
+          </div>
+          <button
+            onClick={generating ? handleCancel : handleGenerate}
+            className="flex items-center gap-2 cursor-pointer flex-shrink-0"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "11px",
+              letterSpacing: "1.5px",
+              textTransform: "uppercase",
+              backgroundColor: generating ? "transparent" : "var(--color-dark)",
+              color: generating ? "var(--color-muted)" : "var(--bg-primary)",
+              borderRadius: "var(--radius-full)",
+              padding: "10px 20px",
+              border: generating ? "1px solid var(--color-border)" : "none",
+            }}
+          >
+            {generating ? (
+              <><IconX size={13} /> Cancel</>
+            ) : (
+              <><IconSparkles size={13} /> Generate</>
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

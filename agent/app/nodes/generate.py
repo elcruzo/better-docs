@@ -294,10 +294,16 @@ async def generate_docs(
 
     sem = asyncio.Semaphore(8)
     completed = {"count": 0}
+    import logging as _log
+    _logger = _log.getLogger("agent")
 
     async def _generate_page_limited(page_id: str, page_plan: dict) -> tuple[str, dict]:
         async with sem:
-            result = await _generate_page(page_id, page_plan, structure, doc_type, repo_name, readme_content)
+            try:
+                result = await _generate_page(page_id, page_plan, structure, doc_type, repo_name, readme_content)
+            except Exception as e:
+                _logger.error("Page '%s' FAILED: %s", page_id, e)
+                raise
             completed["count"] += 1
             if on_progress:
                 pct = 42 + int((completed["count"] / total_pages) * 55)
