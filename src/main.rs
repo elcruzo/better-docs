@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_http::cors::{CorsLayer, Any};
-use tracing::{info, warn, error};
+use tracing::{info, warn, error, debug};
 
 mod parsing;
 mod graph;
@@ -101,16 +101,15 @@ struct ParseRequest {
 }
 
 async fn parse_file(State(state): State<Arc<AppState>>, Json(payload): Json<ParseRequest>) -> Json<Value> {
-    info!("POST /parse -- file={}", payload.filename);
+    debug!("POST /parse -- file={}", payload.filename);
     let result = parsing::parse_content(&payload.filename, &payload.content);
-    info!("  Parsed: {} symbols, {} imports", result.symbols.len(), result.imports.len());
+    debug!("  Parsed: {} symbols, {} imports", result.symbols.len(), result.imports.len());
     let ingested = if let (Some(client), Some(repo)) = (&state.graph, &payload.repo_name) {
         match client.ingest_symbols(repo, &payload.filename, &result).await {
-            Ok(_) => { info!("  Ingested to Neo4j"); true }
-            Err(e) => { error!("  Neo4j ingest failed: {}", e); false }
+            Ok(_) => { true }
+            Err(e) => { error!("  Neo4j ingest failed for {}: {}", payload.filename, e); false }
         }
     } else {
-        warn!("  Skipping ingest (no db or no repo_name)");
         false
     };
     Json(json!({ "parsing": result, "ingested": ingested }))
@@ -145,17 +144,17 @@ async fn query_graph(State(state): State<Arc<AppState>>, Json(payload): Json<Gra
         match payload.query_type.as_str() {
             "symbols" => {
                 let symbols = client.get_all_symbols(&payload.repo_name).await.unwrap_or_default();
-                info!("  Returning {} symbols", symbols.len());
+                debug!("  Returning {} symbols", symbols.len());
                 Json(json!({ "symbols": symbols }))
             }
             "files" => {
                 let files = client.get_all_files(&payload.repo_name).await.unwrap_or_default();
-                info!("  Returning {} files", files.len());
+                debug!("  Returning {} files", files.len());
                 Json(json!({ "files": files }))
             }
             "structure" => {
                 let structure = client.get_repo_structure(&payload.repo_name).await.unwrap_or_default();
-                info!("  Returning structure for {} files", structure.len());
+                debug!("  Returning structure for {} files", structure.len());
                 Json(json!({ "structure": structure }))
             }
             _ => {
