@@ -10,28 +10,49 @@ _client = httpx.AsyncClient(
     limits=httpx.Limits(max_connections=30, max_keepalive_connections=10),
 )
 
-PARSEABLE_EXTS = {
-    ".py", ".js", ".ts", ".tsx", ".jsx", ".rs", ".go", ".java",
-    ".rb", ".php", ".cpp", ".cc", ".cxx", ".c", ".h", ".hpp",
+MAX_FILE_SIZE = 256_000
+SKIP_DIRS = {"node_modules", "vendor", "__pycache__", "dist", "build", "target", ".git"}
+BINARY_EXTS = {
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".svg", ".webp",
+    ".mp3", ".mp4", ".wav", ".avi", ".mov", ".webm", ".ogg", ".flac",
+    ".zip", ".tar", ".gz", ".bz2", ".xz", ".7z", ".rar",
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    ".exe", ".dll", ".so", ".dylib", ".o", ".a", ".lib", ".bin",
+    ".woff", ".woff2", ".ttf", ".eot", ".otf",
+    ".pyc", ".pyo", ".class", ".jar",
+    ".DS_Store", ".lock",
 }
 
-MAX_FILE_SIZE = 256_000
-SKIP_DIRS = {"node_modules", "vendor", "__pycache__", "dist", "build", "target"}
+
+def _is_text_file(path: Path) -> bool:
+    """Quick check: skip known binary extensions, then verify the file is readable as text."""
+    if path.suffix.lower() in BINARY_EXTS:
+        return False
+    if path.name in (".DS_Store", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "Cargo.lock"):
+        return False
+    try:
+        with open(path, "rb") as f:
+            chunk = f.read(8192)
+        if b"\x00" in chunk:
+            return False
+    except Exception:
+        return False
+    return True
 
 
 def _collect_files(repo_path: str) -> list[tuple[str, str]]:
-    """Collect parseable files synchronously (called via asyncio.to_thread)."""
+    """Collect all text files in the repo (called via asyncio.to_thread)."""
     root = Path(repo_path)
     files = []
     for path in root.rglob("*"):
         if not path.is_file():
             continue
-        if path.suffix.lower() not in PARSEABLE_EXTS:
-            continue
         rel = str(path.relative_to(root))
         if any(part.startswith(".") or part in SKIP_DIRS for part in rel.split("/")):
             continue
         if path.stat().st_size > MAX_FILE_SIZE:
+            continue
+        if not _is_text_file(path):
             continue
         try:
             content = path.read_text(errors="replace")
