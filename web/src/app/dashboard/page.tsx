@@ -397,9 +397,13 @@ export default function DashboardPage() {
       </div>
 
       {/* Main area */}
-      <div className="flex-1 flex flex-col p-2 md:p-4 gap-2 md:gap-4 overflow-hidden min-w-0">
-        <DocsPreview docs={docs} loading={generating && !docs} generating={generating} error={error} progress={progress} progressMessage={progressMessage} slug={currentSlug} />
-        <PromptBar onSubmit={handleRefine} loading={refining || generating} disabled={!docs} />
+      <div className="flex-1 flex flex-col p-2 md:p-4 overflow-hidden min-w-0">
+        <div className="flex-1 overflow-hidden min-h-0 mb-2 md:mb-4">
+          <DocsPreview docs={docs} loading={generating && !docs} generating={generating} error={error} progress={progress} progressMessage={progressMessage} slug={currentSlug} />
+        </div>
+        <div className="flex-shrink-0">
+          <PromptBar onSubmit={handleRefine} loading={refining || generating} disabled={!docs} />
+        </div>
       </div>
 
       {/* Mobile bottom bar: selected repo + generate */}

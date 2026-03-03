@@ -1,34 +1,18 @@
-import json, asyncio
+import asyncio, logging
 from typing import Callable, Optional
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.llm import get_llm
+from app.models import DocPlan, DocPage
+
+log = logging.getLogger("agent")
 
 llm = get_llm()
+plan_llm = llm.with_structured_output(DocPlan)
+page_llm = llm.with_structured_output(DocPage)
 
-# --- Phase 1: Plan ---
-# Send full file tree + symbol names (compact). LLM returns a doc outline
-# specifying which pages to create and which files/symbols each page covers.
+PLAN_PROMPT = """You are a documentation architect. Given a complete codebase structure, produce a documentation plan.
 
-PLAN_PROMPT = """You are a documentation architect. Given a complete codebase structure, produce a documentation plan as JSON.
-
-You receive every file and symbol in the repo. Your job: decide what documentation pages to create, and map each page to the specific files and symbols it should cover.
-
-Return JSON matching this schema:
-{
-  "title": "Project Name",
-  "description": "One-line project description",
-  "navigation": [
-    {"group": "Group Name", "pages": ["page_id_1", "page_id_2"]}
-  ],
-  "pages": {
-    "page_id": {
-      "title": "Page Title",
-      "description": "What this page covers",
-      "source_files": ["path/to/file1.py", "path/to/file2.py"],
-      "source_symbols": ["ClassName", "function_name"]
-    }
-  }
-}
+You receive every file and symbol in the repo. Decide what documentation pages to create, and map each page to the specific files and symbols it should cover.
 
 Rules:
 - Create between 4 and 9 pages MAXIMUM. Combine related topics into single pages rather than making many small ones.
@@ -37,12 +21,22 @@ Rules:
 - For consumer docs: getting started, features, guides, configuration, FAQ.
 - For devdocs: architecture, API reference (grouped by module), types, auth, errors.
 - For large codebases, merge related API modules into fewer, richer pages instead of one page per module.
-- page_id must be a lowercase slug using only a-z, 0-9, and hyphens (e.g. "getting-started", "api-users"). The EXACT same slug must appear in both "navigation" and "pages".
-- No emojis. Return ONLY valid JSON."""
+- page_id must be a lowercase slug using only a-z, 0-9, and hyphens (e.g. "getting-started", "api-users"). The EXACT same slug must appear in both navigation and pages.
+- No emojis."""
+
+PAGE_PROMPT = """You are a documentation writer for "better-docs". Generate content for ONE documentation page.
+
+Rules:
+- Write clear, human-readable explanations based on the actual code.
+- Include real code examples derived from the signatures and docstrings.
+- No emojis. Professional, clean language.
+- No placeholder text. Everything should be real, derived from the code.
+- Use a mix of section types: headings, paragraphs, code blocks, tables, lists, endpoints, card groups."""
+
+LLM_CALL_TIMEOUT = 90
 
 
 def _build_file_tree(structure: list[dict]) -> str:
-    """File tree with all symbol names — compact but complete."""
     lines = []
     for f in structure:
         path = f.get("path", "")
@@ -51,20 +45,15 @@ def _build_file_tree(structure: list[dict]) -> str:
         if not symbols:
             lines.append(f"{path} ({lang})")
         else:
-            sym_parts = []
-            for s in symbols:
-                kind = s.get("kind", "")
-                name = s.get("name", "")
-                sym_parts.append(f"{kind}:{name}")
+            sym_parts = [f"{s.get('kind', '')}:{s.get('name', '')}" for s in symbols]
             lines.append(f"{path} ({lang}) [{', '.join(sym_parts)}]")
     return "\n".join(lines)
 
 
-_SYMBOLS_BUDGET = 12000  # max chars for per-page symbol context
+_SYMBOLS_BUDGET = 12000
 
 
 def _format_symbol(s: dict) -> str:
-    """Format a single symbol into a readable text block."""
     name = s.get("name", "")
     kind = s.get("kind", "")
     entry = f"  {kind} {name}"
@@ -86,7 +75,6 @@ def _format_symbol(s: dict) -> str:
 
 
 def _format_file_block(path: str, symbols: list[dict]) -> str:
-    """Format all symbols from one file into a complete block."""
     lines = [f"# {path}"]
     for s in symbols:
         lines.append(_format_symbol(s))
@@ -94,28 +82,19 @@ def _format_file_block(path: str, symbols: list[dict]) -> str:
 
 
 def _get_symbols_for_page(page_plan: dict, structure: list[dict], budget: int = _SYMBOLS_BUDGET) -> str:
-    """Extract full symbol details for files relevant to a page, staying within a character budget.
-
-    Prioritises explicitly-named symbols, then fills remaining budget with
-    matched source files. Each included file block is always complete -- we
-    never slice mid-symbol.
-    """
+    """Extract full symbol details for files relevant to a page, within a character budget."""
     source_files = set(page_plan.get("source_files", []))
     source_symbols = set(page_plan.get("source_symbols", []))
 
-    # --- 1. Build all candidate blocks, split into priority / normal ---
-    priority_blocks: list[str] = []   # explicitly named symbols from non-source files
-    normal_blocks: list[str] = []     # full file blocks from source_files
+    priority_blocks: list[str] = []
+    normal_blocks: list[str] = []
 
-    # Source-file blocks (bulk of the context)
     for f in structure:
         path = f.get("path", "")
         if path not in source_files:
             continue
-        block = _format_file_block(path, f.get("symbols", []))
-        normal_blocks.append(block)
+        normal_blocks.append(_format_file_block(path, f.get("symbols", [])))
 
-    # Explicitly-named symbols from OTHER files (higher priority -- user asked for these)
     if source_symbols:
         for f in structure:
             path = f.get("path", "")
@@ -123,16 +102,14 @@ def _get_symbols_for_page(page_plan: dict, structure: list[dict], budget: int = 
                 continue
             for s in f.get("symbols", []):
                 if s.get("name", "") in source_symbols:
-                    block = f"# {path}\n{_format_symbol(s)}"
-                    priority_blocks.append(block)
+                    priority_blocks.append(f"# {path}\n{_format_symbol(s)}")
 
-    # --- 2. Fill up to budget, priority blocks first ---
     selected: list[str] = []
     used = 0
     omitted = 0
 
     for block in priority_blocks + normal_blocks:
-        cost = len(block) + 2  # +2 for the "\n\n" separator
+        cost = len(block) + 2
         if used + cost > budget and selected:
             omitted += 1
             continue
@@ -145,38 +122,7 @@ def _get_symbols_for_page(page_plan: dict, structure: list[dict], budget: int = 
     return "\n\n".join(selected) if selected else "No specific symbols found."
 
 
-# --- Phase 2: Generate per page ---
-
-PAGE_PROMPT = """You are a documentation writer for "better-docs". Generate content for ONE documentation page as structured JSON.
-
-Return JSON matching this schema:
-{
-  "title": "Page Title",
-  "description": "Page description",
-  "sections": [
-    {"type": "paragraph", "content": "Text content"},
-    {"type": "heading", "content": "Heading text", "level": 2},
-    {"type": "codeBlock", "language": "python", "content": "code here"},
-    {"type": "endpoint", "method": "GET", "path": "/users", "description": "...", "params": [{"name": "id", "type": "string", "description": "..."}], "response": "..."},
-    {"type": "cardGroup", "cards": [{"title": "...", "description": "...", "icon": "code"}]},
-    {"type": "table", "content": "markdown table"},
-    {"type": "list", "items": ["item1", "item2"]}
-  ]
-}
-
-Rules:
-- Write clear, human-readable explanations based on the actual code.
-- Include real code examples derived from the signatures and docstrings.
-- No emojis. Professional, clean language.
-- No placeholder text. Everything should be real, derived from the code.
-- Return ONLY valid JSON."""
-
-
-LLM_CALL_TIMEOUT = 90
-
-
-async def _plan_docs(structure: list[dict], doc_type: str, repo_name: str, readme: str) -> dict:
-    """Phase 1: get a documentation plan from the full file tree."""
+async def _plan_docs(structure: list[dict], doc_type: str, repo_name: str, readme: str) -> DocPlan:
     file_tree = _build_file_tree(structure)
     user_msg = f"""Plan {doc_type} documentation for "{repo_name}" ({len(structure)} files).
 
@@ -184,22 +130,18 @@ README:
 {readme[:4000] if readme else "No README."}
 
 Complete file tree with symbols:
-{file_tree}
+{file_tree}"""
 
-Return the documentation plan as JSON."""
-
-    response = await asyncio.wait_for(
-        llm.ainvoke([SystemMessage(content=PLAN_PROMPT), HumanMessage(content=user_msg)]),
+    return await asyncio.wait_for(
+        plan_llm.ainvoke([SystemMessage(content=PLAN_PROMPT), HumanMessage(content=user_msg)]),
         timeout=LLM_CALL_TIMEOUT,
     )
-    return _parse_json(response.content)
 
 
 MAX_PAGE_RETRIES = 1
 
 
 async def _generate_page(page_id: str, page_plan: dict, structure: list[dict], doc_type: str, repo_name: str, readme: str) -> tuple[str, dict]:
-    """Phase 2: generate one page using its relevant symbols, with retry logic."""
     symbols_context = _get_symbols_for_page(page_plan, structure)
     user_msg = f"""Generate the "{page_plan.get('title', page_id)}" page for {doc_type} docs of "{repo_name}".
 
@@ -209,38 +151,21 @@ Relevant code:
 {symbols_context}
 
 README excerpt (for context):
-{readme[:1500] if readme else "N/A"}
-
-Return the page JSON."""
+{readme[:1500] if readme else "N/A"}"""
 
     last_error = None
     for attempt in range(1 + MAX_PAGE_RETRIES):
         try:
-            response = await asyncio.wait_for(
-                llm.ainvoke([SystemMessage(content=PAGE_PROMPT), HumanMessage(content=user_msg)]),
+            result: DocPage = await asyncio.wait_for(
+                page_llm.ainvoke([SystemMessage(content=PAGE_PROMPT), HumanMessage(content=user_msg)]),
                 timeout=LLM_CALL_TIMEOUT,
             )
-            return page_id, _parse_json(response.content)
+            return page_id, result.model_dump(exclude_none=True)
         except Exception as e:
             last_error = e
             if attempt < MAX_PAGE_RETRIES:
                 await asyncio.sleep(2)
     raise last_error
-
-
-def _parse_json(text: str) -> dict:
-    """Robustly extract JSON from LLM output."""
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            return json.loads(text[start:end])
-        raise
 
 
 # --- Main entry point ---
@@ -257,68 +182,61 @@ async def generate_docs(
     on_progress: ProgressCallback = None,
     on_page: PageCallback = None,
 ) -> dict:
-    """Generate full documentation. on_progress(step, percent, message) is called for SSE streaming.
-    on_page(page_id, page_data) is called as each page finishes so it can be streamed to the client."""
+    """Generate full documentation with structured LLM outputs."""
 
-    # Phase 1: plan
     if on_progress:
-        on_progress("generate", 40, f"Planning documentation structure...")
+        on_progress("generate", 40, "Planning documentation structure...")
     plan = await _plan_docs(structure, doc_type, repo_name, readme_content)
 
-    pages_plan = plan.get("pages", {})
+    pages_plan = plan.pages
     if not pages_plan:
-        return plan
+        return plan.model_dump()
 
     MAX_PAGES = 9
     if len(pages_plan) > MAX_PAGES:
         trimmed_ids = list(pages_plan.keys())[:MAX_PAGES]
         pages_plan = {k: pages_plan[k] for k in trimmed_ids}
-        nav = plan.get("navigation", [])
-        for group in nav:
-            group["pages"] = [p for p in group.get("pages", []) if p in pages_plan]
-        plan["navigation"] = [g for g in nav if g.get("pages")]
-        plan["pages"] = pages_plan
+        plan.pages = pages_plan
+        for group in plan.navigation:
+            group.pages = [p for p in group.pages if p in pages_plan]
+        plan.navigation = [g for g in plan.navigation if g.pages]
 
     total_pages = len(pages_plan)
     if on_progress:
         on_progress("generate", 42, f"Generating {total_pages} pages...")
 
-    # Stream the plan skeleton immediately so the frontend can render nav
     if on_page:
         on_page("__plan__", {
-            "doc_type": plan.get("doc_type", doc_type),
-            "title": plan.get("title", repo_name),
-            "description": plan.get("description", ""),
-            "navigation": plan.get("navigation", []),
+            "doc_type": doc_type,
+            "title": plan.title,
+            "description": plan.description,
+            "navigation": [g.model_dump() for g in plan.navigation],
         })
 
     sem = asyncio.Semaphore(8)
     completed = {"count": 0}
-    import logging as _log
-    _logger = _log.getLogger("agent")
 
-    async def _generate_page_limited(page_id: str, page_plan: dict) -> tuple[str, dict]:
+    async def _generate_page_limited(page_id: str, pp: dict) -> tuple[str, dict]:
         async with sem:
             try:
-                result = await _generate_page(page_id, page_plan, structure, doc_type, repo_name, readme_content)
+                result = await _generate_page(page_id, pp, structure, doc_type, repo_name, readme_content)
             except Exception as e:
-                _logger.error("Page '%s' FAILED: %s", page_id, e)
+                log.error("Page '%s' FAILED: %s", page_id, e)
                 raise
             completed["count"] += 1
             if on_progress:
                 pct = 42 + int((completed["count"] / total_pages) * 55)
-                on_progress("generate", pct, f"Generated page {completed['count']}/{total_pages}: {page_plan.get('title', page_id)}")
+                on_progress("generate", pct, f"Generated page {completed['count']}/{total_pages}: {pp.get('title', page_id)}")
             if on_page:
                 on_page(result[0], result[1])
             return result
 
     tasks = [
-        _generate_page_limited(page_id, page_plan)
-        for page_id, page_plan in pages_plan.items()
+        _generate_page_limited(page_id, pp.model_dump() if hasattr(pp, "model_dump") else pp)
+        for page_id, pp in pages_plan.items()
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Assemble final docs
     pages = {}
     failed_count = 0
     for result in results:
@@ -336,9 +254,9 @@ async def generate_docs(
         on_progress("generate", 99, msg)
 
     return {
-        "doc_type": plan.get("doc_type", doc_type),
-        "title": plan.get("title", repo_name),
-        "description": plan.get("description", ""),
-        "navigation": plan.get("navigation", []),
+        "doc_type": doc_type,
+        "title": plan.title,
+        "description": plan.description,
+        "navigation": [g.model_dump() for g in plan.navigation],
         "pages": pages,
     }

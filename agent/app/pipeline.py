@@ -1,28 +1,26 @@
-import asyncio, json, os, shutil, logging, time
+import asyncio, os, shutil, logging, time
 from typing import TypedDict, Optional, Callable
 from langgraph.graph import StateGraph, END
 from app.nodes.clone import clone_repo, get_repo_name
 from app.nodes.parse import parse_repo, query_graph
 from app.nodes.generate import generate_docs
 from app.llm import get_llm
+from app.models import ClassifyResult
 from langchain_core.messages import SystemMessage, HumanMessage
 
 log = logging.getLogger("agent")
 
 PageCallback = Optional[Callable[[str, dict], None]]
 
-_classify_llm = get_llm()
+_classify_llm = get_llm().with_structured_output(ClassifyResult)
 
 CLASSIFY_PROMPT = """You are a documentation type classifier. Given a repository's README and file list, determine what kind of documentation to generate.
 
-Choose exactly ONE doc_type from:
-- "consumer" — end-user facing product/app docs (getting started, features, guides, FAQ)
-- "devdocs" — developer API reference (endpoints, classes, methods, types, error codes)
-- "library" — reusable library/package docs (installation, usage, API, examples)
-- "cli" — command-line tool docs (commands, flags, configuration, examples)
-
-Return ONLY a JSON object:
-{"doc_type": "...", "reasoning": "one sentence explaining why"}"""
+Choose exactly ONE doc_type:
+- "consumer" -- end-user facing product/app docs (getting started, features, guides, FAQ)
+- "devdocs" -- developer API reference (endpoints, classes, methods, types, error codes)
+- "library" -- reusable library/package docs (installation, usage, API, examples)
+- "cli" -- command-line tool docs (commands, flags, configuration, examples)"""
 
 class PipelineState(TypedDict):
     repo_url: str
@@ -99,34 +97,18 @@ README (first 3000 chars):
 {readme[:3000] if readme else "No README found."}
 
 File tree:
-{file_tree}
+{file_tree}"""
 
-Return the doc_type JSON."""
-
-        response = await asyncio.wait_for(
+        result: ClassifyResult = await asyncio.wait_for(
             _classify_llm.ainvoke([
                 SystemMessage(content=CLASSIFY_PROMPT),
                 HumanMessage(content=user_msg),
             ]),
             timeout=45,
         )
-        text = response.content.strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            result = json.loads(text[start:end])
-        else:
-            result = json.loads(text)
 
-        doc_type = result.get("doc_type", "devdocs")
-        valid_types = {"consumer", "devdocs", "library", "cli"}
-        if doc_type not in valid_types:
-            doc_type = "devdocs"
-
-        log.info("[3/5 classify] Done in %.1fs -- %s (%s)", time.time()-t, doc_type, result.get("reasoning", ""))
-        return {**state, "doc_type": doc_type, "classification": result}
+        log.info("[3/5 classify] Done in %.1fs -- %s (%s)", time.time()-t, result.doc_type, result.reasoning)
+        return {**state, "doc_type": result.doc_type, "classification": result.model_dump()}
     except Exception as e:
         log.error("[3/5 classify] FAILED: %s", e)
         return {**state, "doc_type": "devdocs", "classification": {"error": str(e)}}
