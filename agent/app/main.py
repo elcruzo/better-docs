@@ -72,15 +72,15 @@ async def generate_stream(req: GenerateRequest):
         try:
             result = await asyncio.wait_for(
                 run_pipeline_streaming(req.repo_url, req.doc_type, on_progress, req.github_token, on_page),
-                timeout=300,
+                timeout=600,
             )
             if result.get("error"):
                 queue.put_nowait({"event": "error", "data": {"error": result["error"]}})
             else:
                 queue.put_nowait({"event": "done", "data": result})
         except asyncio.TimeoutError:
-            log.error("  Pipeline timed out after 300s")
-            queue.put_nowait({"event": "error", "data": {"error": "Generation timed out after 5 minutes. Try a smaller repository."}})
+            log.error("  Pipeline timed out after 600s")
+            queue.put_nowait({"event": "error", "data": {"error": "Generation timed out after 10 minutes. Try a smaller repository."}})
         except Exception as e:
             log.exception(f"  Exception in /generate/stream: {e}")
             queue.put_nowait({"event": "error", "data": {"error": str(e)}})

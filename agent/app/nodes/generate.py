@@ -33,7 +33,7 @@ Rules:
 - No placeholder text. Everything should be real, derived from the code.
 - Use a mix of section types: headings, paragraphs, code blocks, tables, lists, endpoints, card groups."""
 
-LLM_CALL_TIMEOUT = 60
+PIPELINE_MAX_TIMEOUT = 600  # 10 min -- individual calls have no timeout; the pipeline enforces the cap
 
 
 def _build_file_tree(structure: list[dict]) -> str:
@@ -132,10 +132,7 @@ README:
 Complete file tree with symbols:
 {file_tree}"""
 
-    return await asyncio.wait_for(
-        plan_llm.ainvoke([SystemMessage(content=PLAN_PROMPT), HumanMessage(content=user_msg)]),
-        timeout=LLM_CALL_TIMEOUT,
-    )
+    return await plan_llm.ainvoke([SystemMessage(content=PLAN_PROMPT), HumanMessage(content=user_msg)])
 
 
 
@@ -151,10 +148,7 @@ Relevant code:
 README excerpt (for context):
 {readme[:1500] if readme else "N/A"}"""
 
-    result: DocPage = await asyncio.wait_for(
-        page_llm.ainvoke([SystemMessage(content=PAGE_PROMPT), HumanMessage(content=user_msg)]),
-        timeout=LLM_CALL_TIMEOUT,
-    )
+    result: DocPage = await page_llm.ainvoke([SystemMessage(content=PAGE_PROMPT), HumanMessage(content=user_msg)])
     return page_id, result.model_dump(exclude_none=True)
 
 
